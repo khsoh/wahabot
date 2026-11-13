@@ -1,3 +1,158 @@
-# wahabot
+# How to set up WAHA bot app to communicate with a Google Apps Script Web App
 
-Bot based on WAHA API
+The purpose of this document is to show how to setup a WAHA bot on a server on the
+[Kamatera cloud provider](https://www.kamatera.com) to communicate with a Google Apps Script Web App. The Web App is NOT part of this repository and will only be known to technical leads of this project.
+
+The source code of the bot is publicly available but the `.env` file is secret.  
+A demo version of this file (`.env.example`) is available in this repository.
+
+## What you need to know
+
+What you need to know to setup and run the chatbot:
+
+- Google Apps Script programming (Javascript)
+- Basic setup Linux servers (Bash shell script programming)
+- APT package management system (for installing packages on Linux)
+- Docker
+- Nodejs (The asynchronous Javascript runtime that runs on the Linux server)
+- NPM (the package management system for Nodejs)
+- Git
+
+## Setting up the bot server on [Kamatera](https://www.kamatera.com):
+
+### Phase 1: Clone the repository to your local PC/Mac first
+
+1. Execute the following command to clone the directory to your local PC first
+
+```
+    git clone https://codeberg.org/khsoh/wahabot.git [optional user-specified bot directory]
+```
+
+NOTE: For the purpose of the rest of this [README](https://codeberg.org/khsoh/wahabot/src/branch/main/README.md),
+we will assume the cloned repository on both the local PC/Mac AND the remote
+server is located `wahabot` subdirectory of the home folder (~ on Unix-based
+systems or `%USERPROFILE%` on Windows systems). The setup scripts and execution
+scripts are designed to be independent of the name of the cloned subdirectory.
+This repository is mirrored to both [github](https://github.com/khsoh/wahabot.git) and [gitlab](https://gitlab.com/khsoh/wahabot.git).
+
+### Phase 2: Edit .env to prepare the bot(s)
+
+1. Copy `.env.example` file in the `wahabot` project to `.env` and edit the
+   relevant fields to ensure that your bot can communicate with the deployed Google
+   Apps Script Web App. The fields you likely need to change for a new deployment are:
+
+- NAME
+- GASURL
+- WAHA_API_KEY
+- SERVER_PORT
+- DOMAIN (this should be the domain name referenced in Phase 8)
+- SIGNAL (the SIGNAL related fields to provide alternate communication channel for pairing WhatsApp)
+
+_**For purpose of discussion, we will assume the NAME field is wahabot. This will also be
+name of the user account**_
+
+2. Additional backup bot server deployments must use the same .env file
+
+### Phase 3: Create the server(s) on the [Kamatera cloud provider](https://www.kamatera.com)
+
+1. Log in to your Kamatera cloud account.
+2. Click on `Create New Service`.
+3. Select a zone from **Choose Zone**
+4. Select `node.js` (use LTS version - this is 16 as of 27 Aug 2022) from **Choose Service**
+5. From **Choose Server Specs**, select these specs: Type A, 1 CPU, 1G RAM, 15 GB SSD
+6. Select `Public Internet` from **Choose Networking**
+7. Complete your setup in **Finalize Settings** by choosing your password, selecting
+   the number of servers and naming your servers. _**For purpose of discussion in the rest of
+   this document, we assume the server is named**_ `wajsbot01`.
+8. Add name of server (`wajsbot01`) to hosts file of local PC/Mac. On Mac, this text file
+   is in `/etc/hosts` directory. On Windows, this file is in `c:\Windows\System32\Drivers\etc\hosts`.
+
+### Phase 4: Installing OpenSSH or PuTTY on local PC/Mac
+
+1. We will use SSH to securely copy files from our PC/Mac to the server. Firstly, install OpenSSH:
+
+- For Windows systems, you only need to install the client: [OpenSSH for Windows](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse?tabs=gui#install-openssh-for-windows).
+- For Mac systems, OpenSSH is already pre-installed.
+
+2. Generate your private/public keypair by executing this command:
+
+```
+    ssh-keygen -t ed25519
+```
+
+Windows provides good documentation on this process [here](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement#user-key-generation). **Do not enter a password for this keypair when you create it**.
+
+Private key file `id_ed25519` and public key file `id_ed25519.pub` are generated and saved in these locations:
+
+- Windows: `%USERPROFILE%\.ssh` folder
+- Mac: `$HOME/.ssh` folder
+
+### Phase 5: Copy setup_root.sh and .env to server and execute the script
+
+_**We will use Mac as the default local platform for the rest of the discussion. Mac
+uses environment variable `$HOME` or shortcut `~` to reference the home directory;
+while Windows uses the environment variable `%USERPROFILE%`**_
+
+1. Copy setup_root.sh and .env over SSH:
+
+```
+    cd ~/wahabot
+    scp setup_root.sh root@wajsbot01:~
+    scp .env root@wajsbot01:~
+    ssh -t root@wajsbot01 "/bin/bash ~/setup_root.sh"
+```
+
+Note that you will be prompted to enter the root password of the server each time you execute
+`scp` or `ssh` command to the root user of the server.
+
+The `setup_root.sh` script will create the user account for `wahabot` (or whatever NAME
+field you assigned in the `.env` file - and you will be prompted to create the
+password for this user account. **Please remember this password for the next phase of
+this setup**.
+
+### Phase 6: Install SSH public key of source PC/Mac
+
+1. Copy SSH public key of source PC/Mac to server
+
+```
+    scp ~/.ssh/id_ed25519.pub wahabot@wajsbot01:~/srcpubkey
+    ssh wahabot@wajsbot01 "cat ~/srcpubkey >> ~/.ssh/authorized_keys"
+```
+
+Note that you will be prompted to enter the password of the `wahabot` user each time you execute
+`scp` or `ssh` command to the root user of the server.
+
+The last command appends the public key to the SSH server's authorized_keys file so that you
+will not need to enter a password everytime you use `scp` or `ssh` commands to communicate with the
+`wahabot` account of the server.
+
+### Phase 7: Setup user `wahabot`
+
+1. Run the following commands on the local/PC MAC to prepare the `wahabot` user account.
+
+```
+    ssh wahabot@wajsbot01 "git clone https://codeberg.org/khsoh/wahabot.git ~/wahabot"
+    scp ~/wahabot/.env wahabot@wajsbot01:~/wahabot
+    ssh -t wahabot@wajsbot01 "/bin/bash ~/wahabot/setup_before_wahabot.sh"
+```
+
+2. After the last command, you will see a message asking you to copy your public key file
+   (`id_ed25519.pub`) to the server. This is not automatic - just follow the steps as
+   indicated in the message.
+
+3. Finally run the final script to complete the setup.
+
+```
+    ssh -t wahabot@wajsbot01 "/bin/bash ~/wahabot/setup_after_wahabot.sh"
+```
+
+You should prepare your WhatsApp application on your phone to scan the QR code to link the
+account to the server.
+
+### Phase 8: Register a domain for the server
+
+1. Use Cloudflare to register a domain name for the server. Remember to update the `DOMAIN` field in the `.env` to be the same domain name that your register.
+
+### Phase 9: Getting an SSL certificate.
+
+1. Executed `setup_ssl.sh` to obtain your SSL certificate from [Let's Encrypt](https://letsencrypt.org). If the domain name has propagated, the certificate should be deposited into `~/.config/botcerts` directory - you should find 2 files in that directory.

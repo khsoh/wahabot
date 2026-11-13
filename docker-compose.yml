@@ -1,0 +1,17 @@
+services:
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: waha
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - WHATSAPP_DEFAULT_ENGINE=GOWS
+      - WAHA_API_KEY=${WAHA_API_KEY}
+      - WAHA_DASHBOARD_USERNAME=${WAHA_USERNAME}
+      - WAHA_DASHBOARD_PASSWORD=${WAHA_PASSWORD}
+      - WAHA_CLIENT_DEVICE_NAME=${WAHA_DEVICENAME}
+      - WAHA_CLIENT_BROWSER_NAME=Desktop
+      - WHATSAPP_SWAGGER_ENABLED=false
+    volumes:
+      - ./sessions:/app/.sessions

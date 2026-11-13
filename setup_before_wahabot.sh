@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+# This should be run by $BOTNAME user just after executing setup_root.sh as root
+SCRIPTPATH="$(
+    cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 || exit
+    pwd -P
+)"
+
+pushd "$SCRIPTPATH" >/dev/null || exit
+if [[ ! $(git remote -v) ]]; then
+    echo ERROR!! "$SCRIPTPATH" is not a cloned repository
+    popd >/dev/null || exit
+    return 1
+fi
+popd >/dev/null || exit
+
+CFGENV="$SCRIPTPATH/.env"
+BOTNAME=$(grep -v '^#' "${CFGENV}" | grep 'NAME=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
+
+cat <<__end
+Install the ssh public key of source PC/Mac to ~/.ssh/authorized_keys
+scp <SSH public key of source PC/Mac> $BOTNAME@$HOSTNAME:~/srcpubkey
+ssh $BOTNAME@$HOSTNAME "cat ~/srcpubkey >> ~/.ssh/authorized_keys"
+__end
+
+# Set environment variables (adjust folder name as needed)
+echo 'export JAVA_HOME="/usr/lib/jvm/java-25-openjdk-amd64"' >>~/.bashrc
+echo 'export PATH="$JAVA_HOME/bin:$PATH"' >>~/.bashrc
+source ~/.bashrc
+
+# Link to bot's signal account
+cat <<EOF_bash
+Execute the following to pair with the bot's Signal account:
+signal-cli link -n "$BOTNAME" | tee >(xargs -L 1 qrencode -t utf8)
+EOF_bash
