@@ -52,6 +52,7 @@ while true; do
     echo #
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         cd ~/wahabot || exit
+        docker compose up -d
         /bin/bash "$SCRIPTPATH/start_wahabot.sh" &
         exit
     fi
