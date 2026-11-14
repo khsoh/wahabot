@@ -12,7 +12,6 @@ services:
       - WAHA_DASHBOARD_PASSWORD=${WAHA_PASSWORD}
       - WAHA_CLIENT_DEVICE_NAME=${WAHA_DEVICENAME}
       - WAHA_CLIENT_BROWSER_NAME=Desktop
-#      - WAHA_HMAC_SECET=${WAHA_HMAC_SECRET}
       - WHATSAPP_SWAGGER_ENABLED=false
       - WHATSAPP_RESTART_ALL_SESSIONS=true
       - WAHA_HTTPS_ENABLED=true
@@ -22,16 +21,14 @@ services:
       - ./sessions:/app/.sessions
       - ~/.config/botcert:/app/certs:ro
 
-  # waha-proxy:
-  #   image: node:26-alpine
-  #   container_name: waha-proxy
-  #   user: "node"
-  #   restart: unless-stopped
-  #   working_dir: /app
-  #   command: node server.js
-  #   environment:
-  #     - PROXY_PORT=${PROXY_PORT}
-  #     - HMAC_SECRET=${WAHA_HMAC_SECRET}
-  #     - GASURL=${GASURL}
-  #   volumes:
-  #     - ./proxy:/app:ro
+  waha-proxy:
+    image: node:26-alpine
+    container_name: waha-proxy
+    user: "node"
+    restart: unless-stopped
+    working_dir: /app
+    command: node server.js
+    env_file:
+      - .env
+    volumes:
+      - ./proxy:/app:ro
