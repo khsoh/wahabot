@@ -2,7 +2,9 @@ services:
   waha:
     image: devlikeapro/waha:latest
     container_name: waha
-    restart: unless-stopped
+    # Re-enable when ready
+    # restart: unless-stopped
+    restart: "no"
     ports:
       - "${SERVER_PORT}:3000"
     environment:
@@ -25,7 +27,9 @@ services:
     image: node:26-alpine
     container_name: waha-proxy
     user: "node"
-    restart: unless-stopped
+    # Re-enable when ready
+    # restart: unless-stopped
+    restart: "no"
     working_dir: /app
     command: node server.js
     env_file:
