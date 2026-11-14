@@ -12,6 +12,9 @@ if [[ ! $(git remote -v) ]]; then
     popd >/dev/null || exit
     return 1
 fi
+
+# Install nodejs packages
+npm install
 popd >/dev/null || exit
 
 CFGENV="$SCRIPTPATH/.env"
