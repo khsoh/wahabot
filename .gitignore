@@ -148,3 +148,7 @@ vite.config.ts.timestamp-*
 localcfg/
 outdated.json
 wahabot.log
+
+# waha-gows sessions file
+sessions/
+
