@@ -12,9 +12,9 @@ else
     read EMAIL_ADDRESS
 fi
 
-CERTDIR="$SCRIPTDIR/certs"
-if [ ! -d "$CERTDIR" ]; then
-    mkdir -p "$CERTDIR"
+BOTDIR=$HOME/.config/botcert
+if [ ! -d "$BOTDIR" ]; then
+    mkdir -p "$BOTDIR"
 fi
 BOTUSER=$(whoami)
 DOMAIN=$(grep -v '^#' "${SCRIPTDIR}/.env" | grep '^DOMAIN=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
@@ -46,12 +46,12 @@ fi
 cat <<EOF1 >/etc/letsencrypt/renewal-hooks/deploy/10-copy-certs.sh
 #!/usr/bin/env bash
 DOMAIN=${FULLHOST}
-CERTDIR=${CERTDIR}
+BOTDIR=${BOTDIR}
 
-cp /etc/letsencrypt/live/\\\$DOMAIN/{fullchain,privkey}.pem "\\\$CERTDIR"
-chown $BOTUSER:$BOTUSER "\\\$CERTDIR"/*.pem
-chmod 600 "\\\$CERTDIR"/privkey.pem
-chmod 644 "\\\$CERTDIR"/fullchain.pem
+cp /etc/letsencrypt/live/\\\$DOMAIN/{fullchain,privkey}.pem "\\\$BOTDIR"
+chown $BOTUSER:$BOTUSER "\\\$BOTDIR"/*.pem
+chmod 600 "\\\$BOTDIR"/privkey.pem
+chmod 644 "\\\$BOTDIR"/fullchain.pem
 
 EOF1
 

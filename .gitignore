@@ -155,5 +155,3 @@ sessions/
 # Ignore nodejs/npm stuff
 package-lock.json
 
-# Ignore SSL cert location
-certs/

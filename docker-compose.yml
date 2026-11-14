@@ -19,4 +19,4 @@ services:
       - WAHA_HTTPS_PATH_KEY=/app/certs/privkey.pem
     volumes:
       - ./sessions:/app/.sessions
-      - ./certs:/app/certs:ro
+      - ~/.config/botcert:/app/certs:ro
