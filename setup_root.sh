@@ -7,9 +7,9 @@ SCRIPTPATH="$(
 )"
 CFGENV="$SCRIPTPATH/.env"
 
-BOTNAME=$(grep -v '^#' "${CFGENV}" | grep 'NAME=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
-SERVER_PORT=$(grep -v '^#' "${CFGENV}" | grep 'SERVER_PORT=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
-SIGNALSTR=$(grep -v '^#' "${CFGENV}" | grep 'SIGNAL=' | cut -d '=' -f2- | sed "s/^'//;s/'$//")
+BOTNAME=$(grep -v '^#' "${CFGENV}" | grep '^NAME=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
+SERVER_PORT=$(grep -v '^#' "${CFGENV}" | grep '^SERVER_PORT=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
+SIGNALSTR=$(grep -v '^#' "${CFGENV}" | grep '^SIGNAL=' | cut -d '=' -f2- | sed "s/^'//;s/'$//")
 
 SIGNALPHONE="$(node -e 'console.log(JSON.parse(process.argv[1]).PHONE)' "$SIGNALSTR")"
 SIGNALPORT="$(node -e 'console.log(JSON.parse(process.argv[1]).PORT)' "$SIGNALSTR")"

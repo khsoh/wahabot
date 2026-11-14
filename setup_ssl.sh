@@ -17,7 +17,7 @@ if [ ! -d "$BOTDIR" ]; then
     mkdir -p $BOTDIR
 fi
 BOTUSER=$(whoami)
-DOMAIN=$(grep -v '^#' "${SCRIPTDIR}/.env" | grep 'DOMAIN=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
+DOMAIN=$(grep -v '^#' "${SCRIPTDIR}/.env" | grep '^DOMAIN=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
 FULLHOST=$(hostname).$DOMAIN
 
 sudo -s <<EOF

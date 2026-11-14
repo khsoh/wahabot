@@ -15,7 +15,7 @@ fi
 popd >/dev/null || exit
 
 CFGENV="$SCRIPTPATH/.env"
-BOTNAME=$(grep -v '^#' "${CFGENV}" | grep 'NAME=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
+BOTNAME=$(grep -v '^#' "${CFGENV}" | grep '^NAME=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
 
 cat <<__end
 Install the ssh public key of source PC/Mac to ~/.ssh/authorized_keys
