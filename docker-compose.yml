@@ -4,7 +4,7 @@ services:
     container_name: waha
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${SERVER_PORT}:3000"
     environment:
       - WHATSAPP_DEFAULT_ENGINE=GOWS
       - WAHA_API_KEY=${WAHA_API_KEY}
@@ -13,5 +13,10 @@ services:
       - WAHA_CLIENT_DEVICE_NAME=${WAHA_DEVICENAME}
       - WAHA_CLIENT_BROWSER_NAME=Desktop
       - WHATSAPP_SWAGGER_ENABLED=false
+      - WHATSAPP_RESTART_ALL_SESSIONS=true
+      - WAHA_HTTPS_ENABLED=true
+      - WAHA_HTTPS_PATH_CERT=/app/certs/fullchain.pem
+      - WAHA_HTTPS_PATH_KEY=/app/certs/privkey.pem
     volumes:
       - ./sessions:/app/.sessions
+      - ./certs:/app/certs:ro
