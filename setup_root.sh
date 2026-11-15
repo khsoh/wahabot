@@ -86,5 +86,14 @@ WantedBy=multi-user.target
 
 EOF
 
+# Prepare to scan QR code to link system to phone
+echo "Prepare for Signal App on phone to scan QR code"
+read -n 1 -s -r -p "Press any key to continue... "
+echo ""
+
+sudo -u $BOTNAME /usr/local/bin/signal-cli \
+    --config /home/$BOTNAME/.local/share/signal-cli \
+    link -n "$HOSTNAME" | xargs -L 1 qrencode -t utf8
+
 systemctl enable signal-cli.service
 systemctl daemon-reload
