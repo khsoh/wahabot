@@ -42,7 +42,7 @@ __vimrc
 (
     crontab -l
     cat <<_end_of_crontab
-3 * * * * /usr/bin/docker run --rm -v $SCRIPTPATH/proxy:/app:ro -w /app node:26-alpine npm outdated --json > $SCRIPTPATH/outdated.json
+3 * * * * /usr/bin/docker run --rm -v $SCRIPTPATH/proxy:/app:ro -w /app node:26-alpine npm outdated --json > $SCRIPTPATH/outdated.json 2>/dev/null || true
 _end_of_crontab
 ) | crontab -
 
