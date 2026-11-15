@@ -19,6 +19,7 @@ services:
       - WAHA_HTTPS_ENABLED=true
       - WAHA_HTTPS_PATH_CERT=/app/certs/fullchain.pem
       - WAHA_HTTPS_PATH_KEY=/app/certs/privkey.pem
+      - WAHA_HTTPS_PATH_CA=/app/certs/fullchain.pem
     volumes:
       - ./sessions:/app/.sessions
       - ~/.config/botcert:/app/certs:ro
