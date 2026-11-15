@@ -36,3 +36,4 @@ services:
       - .env
     volumes:
       - ./proxy:/app:ro
+      - /run/signal-cli:/run/signal-cli
