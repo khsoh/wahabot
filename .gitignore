@@ -146,12 +146,8 @@ vite.config.ts.timestamp-*
 
 # Local configuration files to ignore
 localcfg/
-outdated.json
-wahabot.log
 
 # waha-gows sessions file
 sessions/
 
-# Ignore nodejs/npm stuff
-package-lock.json
-
+proxy/node_modules/

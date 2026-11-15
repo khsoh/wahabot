@@ -24,16 +24,12 @@ services:
       - ~/.config/botcert:/app/certs:ro
 
   waha-proxy:
-    image: node:26-alpine
+    build: ./proxy
     container_name: waha-proxy
-    user: "node"
     # Re-enable when ready
     # restart: unless-stopped
     restart: "no"
-    working_dir: /app
-    command: node server.js
     env_file:
       - .env
     volumes:
-      - ./proxy:/app:ro
       - /run/signal-cli:/run/signal-cli
