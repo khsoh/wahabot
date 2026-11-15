@@ -147,6 +147,9 @@ vite.config.ts.timestamp-*
 # Local configuration files to ignore
 localcfg/
 
+# NPM outdated file
+outdated.json
+
 # waha-gows sessions file
 sessions/
 

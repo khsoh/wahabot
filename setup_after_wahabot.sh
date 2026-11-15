@@ -38,12 +38,20 @@ set modeline
 filetype plugin indent on
 __vimrc
 
+# Setup crontab to check for outdated npm packages
+(
+    crontab -l
+    cat <<_end_of_crontab
+3 * * * * /usr/bin/docker run --rm -v $SCRIPTPATH/proxy:/app:ro -w /app node:26-alpine npm outdated --json > $SCRIPTPATH/outdated.json
+_end_of_crontab
+) | crontab -
+
 while true; do
     read -p "Are you ready to start the bot? " -n 1 -r
     echo #
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         cd ~/wahabot || exit
-        docker compose up -d
+        docker compose up -d --build
         exit
     fi
 done
