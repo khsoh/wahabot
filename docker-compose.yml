@@ -22,6 +22,11 @@ services:
     volumes:
       - ./sessions:/app/.sessions
       - ~/.config/botcert:/app/certs:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   waha-proxy:
     build: ./proxy
@@ -33,3 +38,8 @@ services:
       - .env
     volumes:
       - /run/signal-cli:/run/signal-cli
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
