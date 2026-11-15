@@ -42,7 +42,7 @@ __vimrc
 (
     crontab -l
     cat <<_end_of_crontab
-3 * * * * /usr/bin/docker run --rm --no-deps --entrypoint "" waha-proxy npm outdated --json > $SCRIPTPATH/outdated.json 2>/dev/null || true
+3 * * * * /usr/bin/docker run --rm --no-deps --entrypoint "" waha-proxy npm outdated --json > $SCRIPTPATH/data/outdated.json 2>/dev/null || true
 _end_of_crontab
 ) | crontab -
 
