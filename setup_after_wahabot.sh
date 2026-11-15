@@ -18,15 +18,6 @@ fi
 # - executing setup_before_wabot.sh as $BOTNAME user
 # - installing the ssh public key of source PC/Mac to ~/.ssh/authorized_keys
 
-# Setup crontab to run $SCRIPTPATH/start_wabot.sh after boot up
-(
-    crontab -l
-    cat <<_end_of_crontab
-3 * * * * npm outdated --prefix $SCRIPTPATH --json > $SCRIPTPATH/outdated.json
-@reboot $SCRIPTPATH/start_wahabot.sh
-_end_of_crontab
-) | crontab -
-
 ## Prepare to reboot PC
 cat <<__end_message__
 1. Open WhatsApp app on the bot's phone and prepare to link device to new account

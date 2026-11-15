@@ -18,13 +18,6 @@ SIGNALSOCKET="$(node -e 'console.log(JSON.parse(process.argv[1]).SOCKET)' "$SIGN
 adduser "$BOTNAME"
 usermod -aG sudo "$BOTNAME"
 
-(
-    crontab -l
-    cat <<_end_of_crontab
-0 1 * * * test $(npm outdated -g | wc -l) -gt 0 && npm update -g
-_end_of_crontab
-) | crontab -
-
 # Open firewall for server port
 ufw allow "$SERVER_PORT"
 
