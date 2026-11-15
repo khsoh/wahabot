@@ -10,6 +10,8 @@ services:
     environment:
       - WHATSAPP_DEFAULT_ENGINE=GOWS
       - WAHA_API_KEY=${WAHA_API_KEY}
+      # Uncomment the following line if to disable DASHBOARD access
+      # - WAHA_DASHBOARD_ENABLED=false
       - WAHA_DASHBOARD_USERNAME=${WAHA_USERNAME}
       - WAHA_DASHBOARD_PASSWORD=${WAHA_PASSWORD}
       - WAHA_CLIENT_DEVICE_NAME=${WAHA_DEVICENAME}
