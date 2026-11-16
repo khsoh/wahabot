@@ -88,4 +88,3 @@ if [ "$(echo "$VAL_RESULT" | jq '.success')" == false ]; then
     exit 1
 fi
 echo "${FULLHOST} successfully ${METHOD} to Cloudflare"
-echo "$VAL_RESULT"
