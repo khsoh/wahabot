@@ -17,6 +17,8 @@ fi
 # - executing setup_root.sh as root user
 # - executing setup_before_wabot.sh as $BOTNAME user
 # - installing the ssh public key of source PC/Mac to ~/.ssh/authorized_keys
+# - Register the host in Cloudflare (via ./register_host.sh)
+# - Get SSL cert for this host (via ./setup_ssl.sh)
 
 ## Prepare to reboot PC
 cat <<__end_message__

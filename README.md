@@ -142,15 +142,6 @@ will not need to enter a password everytime you use `scp` or `ssh` commands to c
    (`id_ed25519.pub`) to the server. This is not automatic - just follow the steps as
    indicated in the message.
 
-3. Finally run the final script to complete the setup.
-
-```
-    ssh -t wahabot@wajsbot01 "/bin/bash ~/wahabot/setup_after_wahabot.sh"
-```
-
-You should prepare your WhatsApp application on your phone to scan the QR code to link the
-account to the server.
-
 ### Phase 8: Register a domain for the server
 
 1. Use Cloudflare to register a domain name for the server if you have not yet done so.
@@ -163,3 +154,11 @@ account to the server.
 ### Phase 9: Getting an SSL certificate.
 
 1. Execute `setup_ssl.sh` to obtain your SSL certificate from [Let's Encrypt](https://letsencrypt.org). If the domain name has propagated, the certificate should be deposited into `~/.config/botcerts` directory - you should find 2 files in that directory.
+
+### Phase 10: Installing the docker and app
+
+1. Execute the following script to install the containerized WAHA server and nodejs apps
+
+```
+    ssh -t wahabot@wajsbot01 "/bin/bash ~/wahabot/setup_after_wahabot.sh"
+```
