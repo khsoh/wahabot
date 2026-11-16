@@ -14,6 +14,7 @@ if [[ ! $(git remote -v) ]]; then
 fi
 
 # Install nodejs packages
+cd proxy
 npm install
 popd >/dev/null || exit
 
