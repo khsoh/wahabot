@@ -40,6 +40,8 @@ newgrp docker
 
 sudo -u "$BOTNAME" ssh-keygen -t ed25519
 
+### Add this host to the registered domain - assumes the domain has been registered with Cloudflare
+
 # JVM build (requires JRE >= 25)
 VERSION=$(curl -Ls -o /dev/null -w %{url_effective} https://github.com/AsamK/signal-cli/releases/latest | sed -e 's/^.*\/v//')
 curl -L -O https://github.com/AsamK/signal-cli/releases/download/v"${VERSION}"/signal-cli-"${VERSION}".tar.gz
@@ -78,15 +80,6 @@ StandardError=journal
 WantedBy=multi-user.target
 
 EOF
-
-# Prepare to scan QR code to link system to phone
-echo "Prepare for Signal App on phone to scan QR code"
-read -n 1 -s -r -p "Press any key to continue... "
-echo ""
-
-sudo -u $BOTNAME /usr/local/bin/signal-cli \
-    --config /home/$BOTNAME/.local/share/signal-cli \
-    link -n "$HOSTNAME" | xargs -L 1 qrencode -t utf8
 
 systemctl enable signal-cli.service
 systemctl daemon-reload

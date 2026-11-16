@@ -46,6 +46,8 @@ This repository is mirrored to both [github](https://github.com/khsoh/wahabot.gi
 - WAHA_API_KEY
 - SERVER_PORT
 - DOMAIN (this should be the domain name referenced in Phase 8)
+- CFLARE_API_TOKEN
+- CFLARE_ACCT_ID
 - SIGNAL (the SIGNAL related fields to provide alternate communication channel for pairing WhatsApp)
 
 _**For purpose of discussion, we will assume the NAME field is wahabot. This will also be
@@ -151,8 +153,13 @@ account to the server.
 
 ### Phase 8: Register a domain for the server
 
-1. Use Cloudflare to register a domain name for the server. Remember to update the `DOMAIN` field in the `.env` to be the same domain name that your register.
+1. Use Cloudflare to register a domain name for the server if you have not yet done so.
+   Remember to update the `DOMAIN` field in the `.env` to be the same domain name that your register.
+2. Add an Account API Token for the Cloudflare account so that your script can add this host to the domain.
+   Remember to save the `API Token` and the `Account ID` into the `CFLARE_API_TOKEN` and `CFLARE_ACCT_ID`
+   fields of the `.env` file.
+3. Execute the `register_host.sh` script to add this host to the domain
 
 ### Phase 9: Getting an SSL certificate.
 
-1. Executed `setup_ssl.sh` to obtain your SSL certificate from [Let's Encrypt](https://letsencrypt.org). If the domain name has propagated, the certificate should be deposited into `~/.config/botcerts` directory - you should find 2 files in that directory.
+1. Execute `setup_ssl.sh` to obtain your SSL certificate from [Let's Encrypt](https://letsencrypt.org). If the domain name has propagated, the certificate should be deposited into `~/.config/botcerts` directory - you should find 2 files in that directory.
