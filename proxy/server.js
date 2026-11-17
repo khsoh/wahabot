@@ -1,34 +1,94 @@
-const http = require("http");
-const crypto = require("crypto");
-const os = require("os");
+const http = require("node:http");
+const crypto = require("node:crypto");
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("node:fs");
+const util = require("node:util");
+const parseEnv = util.parseEnv;
 
-const PORT = process.env.PROXY_PORT || 4000;
-const GASURL = process.env.GASURL;
-const PROXY_WEBHOOK_URL = `http://waha-proxy:${PORT}/webhook`;
-const WAHA_PUBLIC_URL = `https://${os.hostname()}.${process.env.DOMAIN}:${process.env.WAHA_PUBLIC_PORT}`;
-const BOT_NAME = process.env.WAHA_DEVICENAME || "defaultbot";
-const HMAC_SECRET = process.env.WAHA_HMAC_SECRET || "";
+let botConfig = null;
+let signalConfig = null;
 
-async function announceStartup() {
-  if (!GASURL || !HMAC_SECRET) {
-    console.error(
-      "FATAL: GASURL or WAHA_HMAC_SECRET is missing. Aborting startup.",
-    );
+function loadConfig() {
+  const demoEnvPath = path.resolve(__dirname, "..", ".env.demo");
+  const demoConfig = parseEnv(fs.readFileSync(demoEnvPath, "utf8"));
+  const envConfig = {};
+
+  const mustChangeKeys = [
+    "GASURL",
+    "WAHA_API_KEY",
+    "WAHA_PASSWORD",
+    "WAHA_DEVICENAME",
+    "WAHA_HMAC_SECRET",
+    "TECHLEAD",
+    "ADMINGRP",
+    "DOMAIN",
+    "CFLARE_API_TOKEN",
+    "CFLARE_ACCT_ID",
+    "SIGNAL",
+  ];
+  const numberKeys = ["WAHA_PUBLIC_PORT", "PROXY_PORT", "BOT_PUBLIC_PORT"];
+
+  let botconfig_ok = true;
+  for (const [key, demoValue] of Object.entries(demoConfig)) {
+    const currentValue = process.env[key];
+
+    // Check 1: is the variable defined in the current environment
+    if (currentValue === undefined || currentValue.trim() === "") {
+      console.error(`Missing required environment variable: ${key}`);
+      botconfig_ok = false;
+      continue;
+    }
+
+    // Check 2. Check sensitive variables have been changed from demo version
+    if (mustChangeKeys.includes(key) && currentValue === demoValue) {
+      console.error(
+        `Security risk: ${key} is still using the default demo value from .env.demo`,
+      );
+      botconfig_ok = false;
+      continue;
+    }
+
+    envConfig[key] = currentValue;
+
+    // Check 3. Number items are numeric
+    if (numberKeys.includes(key)) {
+      const port = Number(currentValue);
+      if (!Number.isFinite(port)) {
+        botconfig_ok = false;
+        console.error(`Invalid ${key} in .env : "${currentValue}"`);
+        continue;
+      }
+
+      envConfig[key] = port;
+    }
+  }
+
+  if (!botconfig_ok) {
     process.exit(1);
   }
+
+  const { SIGNAL: signalRaw, ...botConfig } = envConfig;
+  const signalConfig = JSON.parse(signalRaw);
+  botConfig.HOSTNAME = os.hostname();
+  botConfig.WAHAURL = `https://${botConfig.HOSTNAME}.${botConfig.DOMAIN}:${botConfig.WAHA_PUBLIC_PORT}/`;
+  botConfig.BOTURL = `https://${botConfig.HOSTNAME}.${botConfig.DOMAIN}:${botConfig.BOT_PUBLIC_PORT}/`;
+  botConfig.PROXY_WEBHOOK_URL = `http://waha-proxy:${botConfig.PROXY_PORT}/webhook`;
+
+  return { botConfig, signalConfig };
+}
+
+async function announceStartup() {
+  ({ botConfig, signalConfig } = loadConfig());
 
   const rawBody = JSON.stringify({
     event: "proxy.startup",
     timestamp: new Date().toISOString(),
-    config: {
-      proxyWebhookUrl: PROXY_WEBHOOK_URL,
-      botName: BOT_NAME,
-      wahaUrl: WAHA_PUBLIC_URL,
-    },
+    config: botConfig,
   });
 
   const signature = crypto
-    .createHmac("sha512", HMAC_SECRET)
+    .createHmac("sha512", botConfig.WAHA_HMAC_SECRET)
     .update(rawBody)
     .digest("hex");
 
@@ -41,7 +101,7 @@ async function announceStartup() {
   };
 
   try {
-    const res = await fetch(GASURL, {
+    const res = await fetch(botConfig.GASURL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(startupEnvelope),
@@ -102,7 +162,7 @@ const server = http.createServer((req, res) => {
         rawBody: rawBody,
       };
 
-      const gasResponse = await fetch(GASURL, {
+      const gasResponse = await fetch(botConfig.GASURL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(envelope),
@@ -123,6 +183,8 @@ const server = http.createServer((req, res) => {
 // Run announceStartup() FIRST; only open the port if GAS confirms receipt
 announceStartup().then(() => {
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`WAHA Proxy verified and listening on port ${PORT}`);
+    console.log(
+      `WAHA Proxy verified and listening on port ${botConfig.PROXY_PORT}`,
+    );
   });
 });
