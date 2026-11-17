@@ -182,7 +182,7 @@ const server = http.createServer((req, res) => {
 
 // Run announceStartup() FIRST; only open the port if GAS confirms receipt
 announceStartup().then(() => {
-  server.listen(PORT, "0.0.0.0", () => {
+  server.listen(botConfig.PROXY_PORT, "0.0.0.0", () => {
     console.log(
       `WAHA Proxy verified and listening on port ${botConfig.PROXY_PORT}`,
     );
