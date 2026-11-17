@@ -10,7 +10,7 @@ let botConfig = null;
 let signalConfig = null;
 
 function loadConfig() {
-  const demoEnvPath = path.resolve(__dirname, "..", ".env.demo");
+  const demoEnvPath = path.resolve(__dirname, ".env.demo");
   const demoConfig = parseEnv(fs.readFileSync(demoEnvPath, "utf8"));
   const envConfig = {};
 
