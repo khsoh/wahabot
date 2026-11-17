@@ -39,12 +39,11 @@ services:
     restart: "no"
     env_file:
       - .env
-    environment:
-      - HOST_HOSTNAME=${HOSTNAME}
     volumes:
       - /run/signal-cli:/run/signal-cli
       - ./data:/app/data:ro
       - ./.env.example:/app/.env.example:ro
+      - /etc/hostname:/etc/host_hostname:ro
     logging:
       driver: "json-file"
       options:
