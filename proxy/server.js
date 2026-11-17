@@ -154,7 +154,7 @@ async function announceStartup() {
     if (!replyJson?.apiKey) {
       throw new Error(`GAS did not return WAHA API key to use: ${replyText}`);
     }
-    secretApiKey = replyJson.apiKey;
+    secretApiKey = replyJson.apiKey.trim();
 
     console.log(`Startup handshake succeeded`);
   } catch (err) {
