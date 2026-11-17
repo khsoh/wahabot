@@ -217,7 +217,7 @@ const server = http.createServer((req, res) => {
 });
 
 async function registerWahaWebhook() {
-  const payload = {
+  const webhookConfig = {
     config: {
       webhooks: [
         {
@@ -231,7 +231,23 @@ async function registerWahaWebhook() {
     },
   };
 
-  const result = await sendToWaha("/api/sessions/default", "PUT", payload);
+  let result = await sendToWaha(
+    `/api/sessions/${botConfig.NAME}`,
+    "PUT",
+    webhookConfig,
+  );
+
+  // If session does not exist, create and start it
+  if (result.status === 404) {
+    console.log(
+      `Session '${botConfig.NAME}' not found. Creating and starting it now...`,
+    );
+    result = await sendToWaha("/api/sessions", "POST", {
+      name: botConfig.NAME,
+      start: true,
+      config: webhookConfig,
+    });
+  }
   console.log(
     `Webhook registration response (HTTP ${result.status}): ${result.body}`,
   );
