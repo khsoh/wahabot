@@ -1,4 +1,5 @@
 const http = require("node:http");
+const https = require("node:https");
 const crypto = require("node:crypto");
 const os = require("node:os");
 const path = require("node:path");
@@ -76,6 +77,36 @@ function loadConfig() {
   botConfig.PROXY_WEBHOOK_URL = `http://waha-proxy:${botConfig.PROXY_PORT}/webhook`;
 
   return { botConfig, signalConfig };
+}
+
+function sendToWaha(path, method, payloadObj) {
+  return new Promise((resolve, reject) => {
+    const body = payloadObj ? JSON.stringify(payloadObj) : "";
+
+    const req = https.request(
+      {
+        hostname: "waha",
+        port: 3000,
+        path: path,
+        method: method,
+        servername: `${botConfig.HOSTNAME}.${botConfig.DOMAIN}`,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Api-Key": botConfig.WAHA_API_KEY,
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => resolve({ status: res.statusCode, body: data }));
+      },
+    );
+
+    req.on("error", reject);
+    if (body) req.write(body);
+    req.end();
+  });
 }
 
 async function announceStartup() {
@@ -180,6 +211,27 @@ const server = http.createServer((req, res) => {
   });
 });
 
+async function registerWahaWebhook() {
+  const payload = {
+    config: {
+      webhooks: [
+        {
+          url: botConfig.PROXY_WEBHOOK_URL,
+          events: ["message", "session.status"],
+          hmac: {
+            key: botConfig.WAHA_HMAC_SECRET,
+          },
+        },
+      ],
+    },
+  };
+
+  const result = await sendToWaha("/api/sessions/default", "PUT", payload);
+  console.log(
+    `Webhook registration response (HTTP ${result.status}): ${result.body}`,
+  );
+}
+
 // Run announceStartup() FIRST; only open the port if GAS confirms receipt
 announceStartup().then(() => {
   server.listen(botConfig.PROXY_PORT, "0.0.0.0", () => {
@@ -187,4 +239,6 @@ announceStartup().then(() => {
       `WAHA Proxy verified and listening on port ${botConfig.PROXY_PORT}`,
     );
   });
+
+  registerWahaWebhook();
 });
