@@ -8,7 +8,7 @@ SCRIPTPATH="$(
 CFGENV="$SCRIPTPATH/.env"
 
 BOTNAME=$(grep -v '^#' "${CFGENV}" | grep '^NAME=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
-SERVER_PORT=$(grep -v '^#' "${CFGENV}" | grep '^SERVER_PORT=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
+WAHA_PUBLIC_PORT=$(grep -v '^#' "${CFGENV}" | grep '^WAHA_PUBLIC_PORT=' | cut -d '=' -f2- | sed 's/^"//;s/"$//')
 SIGNALSTR=$(grep -v '^#' "${CFGENV}" | grep '^SIGNAL=' | cut -d '=' -f2- | sed "s/^'//;s/'$//")
 
 SIGNALPHONE="$(node -e 'console.log(JSON.parse(process.argv[1]).PHONE)' "$SIGNALSTR")"
@@ -19,7 +19,7 @@ adduser "$BOTNAME"
 usermod -aG sudo "$BOTNAME"
 
 # Open firewall for server port
-ufw allow "$SERVER_PORT"
+ufw allow "$WAHA_PUBLIC_PORT"
 
 # allow $BOTNAME to execute reboot
 if [ ! -d /etc/sudoers.d ]; then

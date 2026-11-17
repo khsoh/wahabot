@@ -5,7 +5,7 @@ const os = require("os");
 const PORT = process.env.PROXY_PORT || 4000;
 const GASURL = process.env.GASURL;
 const PROXY_WEBHOOK_URL = `http://waha-proxy:${PORT}/webhook`;
-const WAHA_PUBLIC_URL = `https://${os.hostname()}.${process.env.DOMAIN}:${process.env.SERVER_PORT}`;
+const WAHA_PUBLIC_URL = `https://${os.hostname()}.${process.env.DOMAIN}:${process.env.WAHA_PUBLIC_PORT}`;
 const BOT_NAME = process.env.WAHA_DEVICENAME || "defaultbot";
 const HMAC_SECRET = process.env.WAHA_HMAC_SECRET || "";
 

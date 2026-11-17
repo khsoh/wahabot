@@ -6,7 +6,7 @@ services:
     # restart: unless-stopped
     restart: "no"
     ports:
-      - "${SERVER_PORT}:3000"
+      - "${WAHA_PUBLIC_PORT}:3000"
     environment:
       - WHATSAPP_DEFAULT_ENGINE=GOWS
       - WAHA_API_KEY=${WAHA_API_KEY}

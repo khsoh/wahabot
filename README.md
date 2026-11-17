@@ -44,7 +44,8 @@ This repository is mirrored to both [github](https://github.com/khsoh/wahabot.gi
 - NAME
 - GASURL
 - WAHA_API_KEY
-- SERVER_PORT
+- WAHA_PUBLIC_PORT (select a port that Cloudflare supports proxying HTTPS)
+- BOT_PUBLIC_PORT (select a port that Cloudflare supports proxying HTTPS)
 - DOMAIN (this should be the domain name referenced in Phase 8)
 - CFLARE_API_TOKEN
 - CFLARE_ACCT_ID
