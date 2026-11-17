@@ -9,6 +9,7 @@ const parseEnv = util.parseEnv;
 
 let botConfig = null;
 let signalConfig = null;
+let secretApiKey = "";
 
 function loadConfig() {
   const demoEnvPath = path.resolve(__dirname, ".env.example");
@@ -74,7 +75,7 @@ function loadConfig() {
   botConfig.HOSTNAME = fs.readFileSync("/etc/host_hostname", "utf8").trim();
   botConfig.WAHAURL = `https://${botConfig.HOSTNAME}.${botConfig.DOMAIN}:${botConfig.WAHA_PUBLIC_PORT}/`;
   botConfig.BOTURL = `https://${botConfig.HOSTNAME}.${botConfig.DOMAIN}:${botConfig.BOT_PUBLIC_PORT}/`;
-  botConfig.PROXY_WEBHOOK_URL = `http://waha-proxy:3000/webhook`;
+  botConfig.PROXY_WEBHOOK_URL = `http://waha-proxy:${botConfig.PROXY_PORT}/webhook`;
 
   return { botConfig, signalConfig };
 }
@@ -92,7 +93,7 @@ function sendToWaha(path, method, payloadObj) {
         servername: `${botConfig.HOSTNAME}.${botConfig.DOMAIN}`,
         headers: {
           "Content-Type": "application/json",
-          "X-Api-Key": botConfig.WAHA_API_KEY,
+          "X-Api-Key": secretApiKey,
           "Content-Length": Buffer.byteLength(body),
         },
       },
@@ -150,8 +151,12 @@ async function announceStartup() {
     if (replyJson.status !== "ok") {
       throw new Error(`GAS rejected startup payload: ${replyText}`);
     }
+    if (!replyJson?.apiKey) {
+      throw new Error(`GAS did not return WAHA API key to use: ${replyText}`);
+    }
+    secretApiKey = replyJson.apiKey;
 
-    console.log(`Startup handshake succeeded: ${replyText}`);
+    console.log(`Startup handshake succeeded`);
   } catch (err) {
     console.error(
       `FATAL: Could not communicate with GAS (${err.message}). Aborting startup.`,
