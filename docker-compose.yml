@@ -42,7 +42,7 @@ services:
     volumes:
       - /run/signal-cli:/run/signal-cli
       - ./data:/app/data:ro
-      - ./.env.demo:/app/.env.demo:ro
+      - ./.env.example:/app/.env.example:ro
     logging:
       driver: "json-file"
       options:
