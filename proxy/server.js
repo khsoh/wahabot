@@ -74,7 +74,7 @@ function loadConfig() {
   botConfig.HOSTNAME = fs.readFileSync("/etc/host_hostname", "utf8").trim();
   botConfig.WAHAURL = `https://${botConfig.HOSTNAME}.${botConfig.DOMAIN}:${botConfig.WAHA_PUBLIC_PORT}/`;
   botConfig.BOTURL = `https://${botConfig.HOSTNAME}.${botConfig.DOMAIN}:${botConfig.BOT_PUBLIC_PORT}/`;
-  botConfig.PROXY_WEBHOOK_URL = `http://waha-proxy:${botConfig.PROXY_PORT}/webhook`;
+  botConfig.PROXY_WEBHOOK_URL = `http://waha-proxy:3000/webhook`;
 
   return { botConfig, signalConfig };
 }
