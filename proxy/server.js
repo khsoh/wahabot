@@ -204,6 +204,7 @@ const server = http.createServer((req, res) => {
         body: JSON.stringify(envelope),
       });
 
+      console.log(`GAS response: ${JSON.stringify(gasResponse, null, 2)}`);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({ forwarded: true, gasStatus: gasResponse.status }),
