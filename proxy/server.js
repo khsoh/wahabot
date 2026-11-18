@@ -7,7 +7,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const util = require("node:util");
 const parseEnv = util.parseEnv;
-const QRCode = require("qrcode");
+const { stdout, stderr } = require("process");
 
 const CONTAINER_TMP_DIR = "/shared-tmp";
 const HOST_TMP_DIR = process.env.HOST_SHARED_TMP;
@@ -25,7 +25,7 @@ class EnhancedTimeout {
       try {
         await this.callback(...this.args);
       } catch (err) {
-        console.error(
+        dtcon.error(
           `EnhancedTimeout background execution error: ${err.message}`,
         );
       }
@@ -50,6 +50,97 @@ class EnhancedTimeout {
     }
   }
 }
+
+const deleteSignalTimeouts = [];
+
+function gentsdate(epochTime, override_opts = {}) {
+  const options = {
+    ...{
+      day: "2-digit",
+      year: "numeric",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      fractionalSecondDigits: 3,
+      timeZoneName: "long",
+      timeZone: "Asia/Singapore",
+    },
+    ...override_opts,
+  };
+  const dtf = new Intl.DateTimeFormat("en-us", options);
+  const pt = dtf.formatToParts(epochTime);
+  const p = pt.reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}.${p.fractionalSecond} ${p.timeZoneName}`;
+}
+
+class TConsole extends console.Console {
+  constructor(...args) {
+    super(...args);
+    this.tslog_tz = "Asia/Singapore";
+  }
+  set_tz(tz) {
+    this.tslog_tz = tz;
+  }
+  tsdate() {
+    return gentsdate(Date.now(), { timeZoneName: "short" });
+  }
+  log(data, ...args) {
+    super.log(`${this.tsdate()} --- `, util.format(data, ...args));
+  }
+  warn(data, ...args) {
+    super.warn(`${this.tsdate()} :::WARN::: `, util.format(data, ...args));
+  }
+  error(data, ...args) {
+    super.error(`${this.tsdate()} ###ERROR### `, util.format(data, ...args));
+  }
+}
+const dtcon = new TConsole({ stdout, stderr });
+
+// ========= Clean up code ==========
+const cleanupTasks = [];
+function onExit(cleanupFn) {
+  cleanupTasks.push(cleanupFn);
+}
+
+let isCleaningUp = false;
+let cleanupReboot = false;
+let cleanupExitCode = 0;
+
+async function executeCleanup(exitCode = 0, doReboot = false) {
+  cleanupReboot = cleanupReboot || doReboot;
+  cleanupExitCode = Math.max(exitCode, cleanupExitCode);
+  if (isCleaningUp) {
+    dtcon.log("Cleanup already in progress - forcing exit.");
+    process.exit(cleanupExitCode);
+    return;
+  }
+
+  isCleaningUp = true;
+
+  dtcon.log("\nStarting cleanup tasks...");
+
+  // Run cleanup tasks sequentially
+  for (const fn of cleanupTasks) {
+    try {
+      await fn();
+    } catch (err) {
+      dtcon.error("Cleanup task failed:", err);
+    }
+  }
+  dtcon.log("All cleanup tasks attempted.");
+
+  if (cleanupReboot) {
+    bare_reboot();
+  }
+  process.exit(cleanupExitCode);
+}
+
+// ========= End clean up code ==========
 
 function loadConfig() {
   const demoEnvPath = path.resolve(__dirname, ".env.example");
@@ -77,14 +168,14 @@ function loadConfig() {
 
     // Check 1: is the variable defined in the current environment
     if (currentValue === undefined || currentValue.trim() === "") {
-      console.error(`Missing required environment variable: ${key}`);
+      dtcon.error(`Missing required environment variable: ${key}`);
       botconfig_ok = false;
       continue;
     }
 
     // Check 2. Check sensitive variables have been changed from demo version
     if (mustChangeKeys.includes(key) && currentValue === demoValue) {
-      console.error(
+      dtcon.error(
         `Security risk: ${key} is still using the default demo value from .env.demo`,
       );
       botconfig_ok = false;
@@ -98,7 +189,7 @@ function loadConfig() {
       const port = Number(currentValue);
       if (!Number.isFinite(port)) {
         botconfig_ok = false;
-        console.error(`Invalid ${key} in .env : "${currentValue}"`);
+        dtcon.error(`Invalid ${key} in .env : "${currentValue}"`);
         continue;
       }
 
@@ -196,7 +287,7 @@ async function announceStartup() {
     }
     secretApiKey = replyJson.apiKey.trim();
 
-    console.log(`Startup handshake succeeded`);
+    dtcon.log(`Startup handshake succeeded`);
     await sendSignalMessage(
       signalConfig.GROUPID,
       "Startup handshake succeeded",
@@ -204,7 +295,7 @@ async function announceStartup() {
       1000 * 10,
     );
   } catch (err) {
-    console.error(
+    dtcon.error(
       `FATAL: Could not communicate with GAS (${err.message}). Aborting startup.`,
     );
     process.exit(1);
@@ -240,13 +331,13 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
         resTimeout = resTimeout + 10000;
         res.setTimeout(resTimeout);
         changeTimeout = changeTimeout + 10000;
-        console.log(`HTTP Server data: Set new socket timeout: ${resTimeout}`);
+        dtcon.log(`HTTP Server data: Set new socket timeout: ${resTimeout}`);
       }
     });
 
     req.on("end", async function () {
       try {
-        console.log("Processing end of sendSignalMessage");
+        dtcon.log("Processing end of sendSignalMessage");
         // Check header has API key
         const XapiKey = req.headers?.["x-api-key"];
         if (XapiKey !== secretApiKey) {
@@ -256,22 +347,30 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
 
         let jsonObj = JSON.parse(body);
         if (jsonObj.cmd === "sendSignalMessage") {
-          console.log(`Received sendSignalMessage: ${jsonObj.message}`);
-          if (jsonObj?.qr) {
-            console.log(`QR:\n${jsonObj.qr}`);
-          }
-          await sendSignalMessage(
+          dtcon.log(`Received sendSignalMessage: ${jsonObj.message}`);
+          let retObj = await sendSignalMessage(
             signalConfig.GROUPID,
             jsonObj.message,
             jsonObj?.qr ?? null,
             jsonObj?.autoDeletems ?? 0,
           );
+          if (jsonObj?.qr) {
+            while (deleteSignalTimeouts.length > 0) {
+              const ts = deleteSignalTimeouts.shift();
+              if (ts) {
+                await ts.trigger();
+              }
+            }
+            deleteSignalTimeouts.push(retObj.timeoutObj);
+          }
+          response = JSON.stringify(retObj.responseData);
+          res.setHeader("Content-Type", "application/json");
         }
       } catch (e) {
         response =
           "ERROR CAUGHT: " +
           `${e?.stack ?? "no stack"}\n${e?.cause ?? "no cause"}`;
-        console.error(response);
+        dtcon.error(response);
 
         res.statusCode = 400;
       } finally {
@@ -279,7 +378,7 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
       }
     });
   } else {
-    console.error(`HTTP Server warning: Unhandled method ${method}`);
+    dtcon.error(`HTTP Server warning: Unhandled method ${method}`);
   }
 });
 
@@ -294,7 +393,7 @@ const server = http.createServer((req, res) => {
   const hmacAlgorithm = req.headers["x-webhook-hmac-algorithm"];
 
   if (!incomingHmac || !hmacAlgorithm) {
-    console.warn(
+    dtcon.warn(
       "Dropped request: Missing x-webhook-hmac or x-webhook-hmac-algorithm header",
     );
     res.writeHead(401, { "Content-Type": "application/json" });
@@ -324,13 +423,13 @@ const server = http.createServer((req, res) => {
         body: JSON.stringify(envelope),
       });
 
-      console.log(`GAS response: ${JSON.stringify(gasResponse, null, 2)}`);
+      dtcon.log(`GAS response: ${JSON.stringify(gasResponse, null, 2)}`);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({ forwarded: true, gasStatus: gasResponse.status }),
       );
     } catch (err) {
-      console.error("Proxy error:", err.message);
+      dtcon.error("Proxy error:", err.message);
       res.writeHead(500);
       res.end("Internal Server Error");
     }
@@ -360,7 +459,7 @@ async function registerWahaWebhook() {
 
   // If session does not exist, create and start it
   if (result.status === 404) {
-    console.log(
+    dtcon.log(
       `Session '${botConfig.NAME}' not found. Creating and starting it now...`,
     );
     result = await sendToWaha("/api/sessions", "POST", {
@@ -369,27 +468,13 @@ async function registerWahaWebhook() {
       config: webhookConfig,
     });
   }
-  console.log(
+  dtcon.log(
     `Webhook registration response (HTTP ${result.status}): ${result.body}`,
   );
 }
 
-// Run announceStartup() FIRST; only open the port if GAS confirms receipt
-announceStartup().then(() => {
-  server.listen(botConfig.PROXY_PORT, "0.0.0.0", () => {
-    console.log(
-      `WAHA Proxy verified and listening on port ${botConfig.PROXY_PORT}`,
-    );
-  });
-
-  gasServer.listen(botConfig.BOT_PUBLIC_PORT, "0.0.0.0", () => {
-    console.log(`GAS server listening on port ${botConfig.BOT_PUBLIC_PORT}`);
-  });
-  registerWahaWebhook();
-});
-
 async function removeSignalMessage(groupId, timestamp) {
-  console.log(
+  dtcon.log(
     `removeSignalMessage: groupId: ${groupId}, ts: ${timestamp}; ${typeof timestamp}`,
   );
   return new Promise((resolve, reject) => {
@@ -406,13 +491,13 @@ async function removeSignalMessage(groupId, timestamp) {
         },
       };
 
-      console.log("Connected to signal-cli daemon.");
+      dtcon.log("Connected to signal-cli daemon.");
 
       // Every JSON-RPC request must end with a newline character
       signalClient.write(JSON.stringify(payload) + "\n");
 
-      console.log("Remote delete message sent to Signal daemon");
-      console.log(JSON.stringify(payload, null, 2));
+      dtcon.log("Remote delete message sent to Signal daemon");
+      dtcon.log(JSON.stringify(payload, null, 2));
     });
 
     // Accumulate incoming data chunks
@@ -427,10 +512,10 @@ async function removeSignalMessage(groupId, timestamp) {
     signalClient.on("end", () => {
       try {
         const responseData = JSON.parse(Buffer.concat(chunks).toString());
-        console.log("Daemon Response:", JSON.stringify(responseData, null, 2));
+        dtcon.log("Daemon Response:", JSON.stringify(responseData, null, 2));
         resolve(responseData);
       } catch (parseErr) {
-        console.error(
+        dtcon.error(
           `Failed to parse JSON response from daemon: ${parseErr.message}`,
         );
         reject(parseErr);
@@ -439,7 +524,7 @@ async function removeSignalMessage(groupId, timestamp) {
 
     // 4. Handle connection errors
     signalClient.on("error", (err) => {
-      console.error("Failed to connect to Signal daemon:", err.message);
+      dtcon.error("Failed to connect to Signal daemon:", err.message);
       reject(err);
     });
   });
@@ -462,9 +547,9 @@ async function sendSignalMessage(
       hostPath = path.join(HOST_TMP_DIR, filename);
 
       fs.writeFileSync(containerPath, Buffer.from(qrData, "base64"));
-      console.log(`Generated volatile QR code image at: ${containerPath}`);
+      dtcon.log(`Generated volatile QR code image at: ${containerPath}`);
     } catch (err) {
-      console.error("Failed to generate QR Code image locally:", err.message);
+      dtcon.error("Failed to generate QR Code image locally:", err.message);
       return null;
     }
   }
@@ -474,11 +559,11 @@ async function sendSignalMessage(
     if (containerPath && fs.existsSync(containerPath)) {
       try {
         fs.unlinkSync(containerPath);
-        console.log(
+        dtcon.log(
           `Temporary QR file wiped from ${CONTAINER_TMP_DIR} successfully.`,
         );
       } catch (err) {
-        console.error(
+        dtcon.error(
           `Failed to remove file from ${CONTAINER_TMP_DIR}: ${err.message}`,
         );
       }
@@ -503,12 +588,12 @@ async function sendSignalMessage(
         },
       };
 
-      console.log("Connected to signal-cli daemon.");
+      dtcon.log("Connected to signal-cli daemon.");
 
       // Every JSON-RPC request must end with a newline character
       signalClient.write(JSON.stringify(payload) + "\n");
 
-      console.log(`Message sent to Signal daemon: "${text}"`);
+      dtcon.log(`Message sent to Signal daemon: "${text}"`);
     });
 
     // Accumulate incoming data chunks
@@ -523,7 +608,7 @@ async function sendSignalMessage(
     signalClient.on("end", () => {
       try {
         const rawData = Buffer.concat(chunks).toString();
-        console.log(`Daemon raw response: ${rawData}`);
+        dtcon.log(`Daemon raw response: ${rawData}`);
 
         // Split by newline
         const lines = rawData.split("\n");
@@ -543,13 +628,13 @@ async function sendSignalMessage(
               break; // Found the correct response
             }
           } catch (e) {
-            console.error(`Failed to parse line: ${line}\nERROR: ${e.message}`);
+            dtcon.error(`Failed to parse line: ${line}\nERROR: ${e.message}`);
           }
         }
         if (!responseData) {
           throw new Error("Failed to get proper signal-cli daemon response");
         }
-        console.log("Daemon Response:", JSON.stringify(responseData, null, 2));
+        dtcon.log("Daemon Response:", JSON.stringify(responseData, null, 2));
         let retval = {
           responseData: responseData,
           timeoutObj: null,
@@ -563,7 +648,7 @@ async function sendSignalMessage(
         }
         resolve(retval);
       } catch (parseErr) {
-        console.error(
+        dtcon.error(
           `Failed to parse JSON response from daemon: ${parseErr.message}`,
         );
         reject(parseErr);
@@ -572,7 +657,7 @@ async function sendSignalMessage(
 
     // 4. Handle connection errors
     signalClient.on("error", (err) => {
-      console.error("Failed to connect to Signal daemon:", err.message);
+      dtcon.error("Failed to connect to Signal daemon:", err.message);
       reject(err);
     });
 
@@ -582,3 +667,49 @@ async function sendSignalMessage(
     });
   });
 }
+
+// Run announceStartup() FIRST; only open the port if GAS confirms receipt
+announceStartup().then(() => {
+  server.listen(botConfig.PROXY_PORT, "0.0.0.0", () => {
+    dtcon.log(
+      `WAHA Proxy verified and listening on port ${botConfig.PROXY_PORT}`,
+    );
+  });
+
+  gasServer.listen(botConfig.BOT_PUBLIC_PORT, "0.0.0.0", () => {
+    dtcon.log(`GAS server listening on port ${botConfig.BOT_PUBLIC_PORT}`);
+  });
+
+  // Register process exit functions that should not be registered via onExit
+  process.on("uncaughtException", (err) => {
+    dtcon.error("Caught Exception at Line:", err.stack.split("\n")[1]);
+    executeCleanup(1);
+  });
+
+  process.on("unhandledRejection", (reason, promise) => {
+    // Print out stack for an Error object
+    if (reason instanceof Error) {
+      dtcon.error(`Unhandled Rejection Stack: ${reason.stack}`);
+    } else {
+      dtcon.error(`Unhandled Rejection (no stack): ${reason}`);
+    }
+    executeCleanup(1);
+  });
+
+  process.on("beforeExit", () => {
+    // Only triggers if the event loop is empty and no process.exit() was called
+    executeCleanup(0);
+  });
+
+  // Register onExit to clean Signal timeout objects
+  onExit(async () => {
+    while (deleteSignalTimeouts.length > 0) {
+      const ts = deleteSignalTimeouts.shift();
+      if (ts) {
+        await ts.trigger();
+      }
+    }
+  });
+
+  registerWahaWebhook();
+});
