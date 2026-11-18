@@ -37,6 +37,8 @@ services:
     # Re-enable when ready
     # restart: unless-stopped
     restart: "no"
+    ports:
+      - "${BOT_PUBLIC_PORT}:${BOT_PUBLIC_PORT}"
     env_file:
       - .env
     volumes:
@@ -44,6 +46,8 @@ services:
       - ./data:/app/data:ro
       - ./.env.example:/app/.env.example:ro
       - /etc/hostname:/etc/host_hostname:ro
+      - ~/.config/botcert:/app/certs:ro
+      - ./shared-tmp:/shared-tmp
     logging:
       driver: "json-file"
       options:

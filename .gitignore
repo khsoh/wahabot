@@ -149,6 +149,7 @@ localcfg/
 
 # NPM outdated file in this folder
 data/
+shared-tmp/
 
 # waha-gows sessions file
 sessions/

@@ -2,14 +2,51 @@ const http = require("node:http");
 const https = require("node:https");
 const crypto = require("node:crypto");
 const os = require("node:os");
+const net = require("node:net");
 const path = require("node:path");
 const fs = require("node:fs");
 const util = require("node:util");
 const parseEnv = util.parseEnv;
+const QRCode = require("qrcode");
 
 let botConfig = null;
 let signalConfig = null;
 let secretApiKey = "";
+
+class EnhancedTimeout {
+  constructor(callback, delay, ...args) {
+    this.callback = callback;
+    this.args = args;
+    this.id = setTimeout(async () => {
+      this.id = null;
+      try {
+        await this.callback(...this.args);
+      } catch (err) {
+        console.error(
+          `EnhancedTimeout background execution error: ${err.message}`,
+        );
+      }
+    }, delay);
+  }
+
+  async trigger() {
+    if (this.id !== null) {
+      clearTimeout(this.id);
+      this.id = null;
+
+      // Await the callback in case the caller wants to wait for it
+      return await this.callback(...this.args);
+    }
+    return null;
+  }
+
+  cancel() {
+    if (this.id !== null) {
+      clearTimeout(this.id);
+      this.id = null;
+    }
+  }
+}
 
 function loadConfig() {
   const demoEnvPath = path.resolve(__dirname, ".env.example");
@@ -157,6 +194,12 @@ async function announceStartup() {
     secretApiKey = replyJson.apiKey.trim();
 
     console.log(`Startup handshake succeeded`);
+    await sendSignalMessage(
+      signalConfig.GROUPID,
+      "Startup handshake succeeded",
+      null,
+      1000 * 10,
+    );
   } catch (err) {
     console.error(
       `FATAL: Could not communicate with GAS (${err.message}). Aborting startup.`,
@@ -165,6 +208,79 @@ async function announceStartup() {
   }
 }
 
+// =========================================================================
+// Create the GAS HTTPS server
+const certPath = "/app/certs/fullchain.pem";
+const keyPath = "/app/certs/privkey.pem";
+const serverOptions = {
+  key: fs.readFileSync(keyPath),
+  cert: fs.readFileSync(certPath),
+};
+const gasServer = https.createServer(serverOptions, async (req, res) => {
+  let resTimeout = gasServer.timeout;
+  let connectStartTime = Date.now();
+  let changeTimeout = connectStartTime + resTimeout - 10000;
+  let method = req.method.toUpperCase();
+
+  if (method === "GET") {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("ok");
+  } else if (method === "POST") {
+    let body = "";
+    let response = "OK";
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/plain");
+
+    req.on("data", function (chunk) {
+      body += chunk;
+      if (Date.now() > changeTimeout) {
+        resTimeout = resTimeout + 10000;
+        res.setTimeout(resTimeout);
+        changeTimeout = changeTimeout + 10000;
+        console.log(`HTTP Server data: Set new socket timeout: ${resTimeout}`);
+      }
+    });
+
+    req.on("end", async function () {
+      try {
+        console.log("Processing end of sendSignalMessage");
+        // Check header has API key
+        const XapiKey = req.headers?.["x-api-key"];
+        if (XapiKey !== secretApiKey) {
+          throw new Error("Error: Incorrect API key");
+        }
+        res.statusCode = 200;
+
+        let jsonObj = JSON.parse(body);
+        if (jsonObj.cmd === "sendSignalMessage") {
+          console.log(`Received sendSignalMessage: ${jsonObj.message}`);
+          if (jsonObj?.qr) {
+            console.log(`QR:\n${jsonObj.qr}`);
+          }
+          await sendSignalMessage(
+            signalConfig.GROUPID,
+            jsonObj.message,
+            jsonObj?.qr ?? null,
+            jsonObj?.autoDeletems ?? 0,
+          );
+        }
+      } catch (e) {
+        response =
+          "ERROR CAUGHT: " +
+          `${e?.stack ?? "no stack"}\n${e?.cause ?? "no cause"}`;
+        console.error(response);
+
+        res.statusCode = 400;
+      } finally {
+        res.end(response);
+      }
+    });
+  } else {
+    console.error(`HTTP Server warning: Unhandled method ${method}`);
+  }
+});
+
+//server = https.createServer(serverOptions, async (req, res) => {
 const server = http.createServer((req, res) => {
   if (req.method !== "POST" || req.url !== "/webhook") {
     res.writeHead(404);
@@ -262,5 +378,204 @@ announceStartup().then(() => {
     );
   });
 
+  gasServer.listen(botConfig.BOT_PUBLIC_PORT, "0.0.0.0", () => {
+    console.log(`GAS server listening on port ${botConfig.BOT_PUBLIC_PORT}`);
+  });
   registerWahaWebhook();
 });
+
+async function removeSignalMessage(groupId, timestamp) {
+  console.log(
+    `removeSignalMessage: groupId: ${groupId}, ts: ${timestamp}; ${typeof timestamp}`,
+  );
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+
+    const signalClient = net.createConnection(signalConfig.SOCKET, () => {
+      const payload = {
+        jsonrpc: "2.0",
+        id: Date.now(), // Unique ID for tracking responses
+        method: "remoteDelete",
+        params: {
+          groupIds: [groupId],
+          targetTimestamp: timestamp,
+        },
+      };
+
+      console.log("Connected to signal-cli daemon.");
+
+      // Every JSON-RPC request must end with a newline character
+      signalClient.write(JSON.stringify(payload) + "\n");
+
+      console.log("Remote delete message sent to Signal daemon");
+      console.log(JSON.stringify(payload, null, 2));
+    });
+
+    // Accumulate incoming data chunks
+    signalClient.on("data", (data) => {
+      chunks.push(data);
+      if (data.toString().endsWith("\n")) {
+        signalClient.end();
+      }
+    });
+
+    // 3. Resolve response on 'end'
+    signalClient.on("end", () => {
+      try {
+        const responseData = JSON.parse(Buffer.concat(chunks).toString());
+        console.log("Daemon Response:", JSON.stringify(responseData, null, 2));
+        resolve(responseData);
+      } catch (parseErr) {
+        console.error(
+          `Failed to parse JSON response from daemon: ${parseErr.message}`,
+        );
+        reject(parseErr);
+      }
+    });
+
+    // 4. Handle connection errors
+    signalClient.on("error", (err) => {
+      console.error("Failed to connect to Signal daemon:", err.message);
+      reject(err);
+    });
+  });
+}
+
+async function sendSignalMessage(
+  groupId,
+  text,
+  qrData = null,
+  autoDeletems = 0,
+) {
+  let attachmentPath = null;
+  const tmpDir = os.tmpdir();
+
+  // 1. Generate QR code image file
+  if (qrData) {
+    try {
+      attachmentPath = path.join(
+        "/shared-tmp",
+        `signal_qr_${Date.now()}_${Math.floor(Math.random() * 1000)}.png`,
+      );
+
+      fs.writeFileSync(attachmentPath, Buffer.from(qrData, "base64"));
+      // await QRCode.toFile(attachmentPath, qrData, {
+      //   errorCorrectionLevel: "H",
+      //   width: 500,
+      // });
+      console.log(`Generated volatile QR code image at: ${attachmentPath}`);
+    } catch (err) {
+      console.error("Failed to generate QR Code image locally:", err.message);
+      return null;
+    }
+  }
+
+  // Helper function to safely delete the attachment
+  const cleanUpFile = () => {
+    if (attachmentPath && fs.existsSync(attachmentPath)) {
+      try {
+        fs.unlinkSync(attachmentPath);
+        console.log(`Temporary QR file wiped from ${tmpDir} successfully.`);
+      } catch (err) {
+        console.error(`Failed to remove file from ${tmpDir}: ${err.message}`);
+      }
+    }
+  };
+
+  // 2. Wrap network communication in a Promise
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+
+    const signalClient = net.createConnection(signalConfig.SOCKET, () => {
+      const payload = {
+        jsonrpc: "2.0",
+        id: Date.now(), // Unique ID for tracking responses
+        method: "send",
+        params: {
+          groupId: groupId,
+          message: text,
+          ...(attachmentPath && {
+            attachments: [attachmentPath],
+          }),
+        },
+      };
+
+      console.log("Connected to signal-cli daemon.");
+
+      // Every JSON-RPC request must end with a newline character
+      signalClient.write(JSON.stringify(payload) + "\n");
+
+      console.log(`Message sent to Signal daemon: "${text}"`);
+    });
+
+    // Accumulate incoming data chunks
+    signalClient.on("data", (data) => {
+      chunks.push(data);
+      if (data.toString().endsWith("\n")) {
+        signalClient.end();
+      }
+    });
+
+    // 3. Resolve response on 'end'
+    signalClient.on("end", () => {
+      try {
+        const rawData = Buffer.concat(chunks).toString();
+        console.log(`Daemon raw response: ${rawData}`);
+
+        // Split by newline
+        const lines = rawData.split("\n");
+
+        let responseData = null;
+
+        for (const line of lines) {
+          if (!line.trim()) {
+            continue; // skip empty lines
+          }
+
+          try {
+            const parsedObj = JSON.parse(line);
+
+            if (parsedObj.id !== undefined) {
+              responseData = parsedObj;
+              break; // Found the correct response
+            }
+          } catch (e) {
+            console.error(`Failed to parse line: ${line}\nERROR: ${e.message}`);
+          }
+        }
+        if (!responseData) {
+          throw new Error("Failed to get proper signal-cli daemon response");
+        }
+        console.log("Daemon Response:", JSON.stringify(responseData, null, 2));
+        let retval = {
+          responseData: responseData,
+          timeoutObj: null,
+        };
+
+        if (autoDeletems) {
+          // Set a timeout to remove the message
+          retval.timeoutObj = new EnhancedTimeout(async () => {
+            await removeSignalMessage(groupId, responseData.result.timestamp);
+          }, autoDeletems);
+        }
+        resolve(retval);
+      } catch (parseErr) {
+        console.error(
+          `Failed to parse JSON response from daemon: ${parseErr.message}`,
+        );
+        reject(parseErr);
+      }
+    });
+
+    // 4. Handle connection errors
+    signalClient.on("error", (err) => {
+      console.error("Failed to connect to Signal daemon:", err.message);
+      reject(err);
+    });
+
+    // 5. Cleanup on 'close'
+    signalClient.once("close", async () => {
+      cleanUpFile();
+    });
+  });
+}
