@@ -51,7 +51,8 @@ class EnhancedTimeout {
   }
 }
 
-const deleteSignalTimeouts = [];
+const deleteQRSignalTimeouts = [];
+const deleteNonQRSignalTimeouts = [];
 
 function gentsdate(epochTime, override_opts = {}) {
   const options = {
@@ -151,7 +152,6 @@ function loadConfig() {
     "GASURL",
     "WAHA_API_KEY",
     "WAHA_PASSWORD",
-    "WAHA_DEVICENAME",
     "WAHA_HMAC_SECRET",
     "TECHLEAD",
     "ADMINGRP",
@@ -354,14 +354,18 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
             jsonObj?.qr ?? null,
             jsonObj?.autoDeletems ?? 0,
           );
-          if (jsonObj?.qr) {
-            while (deleteSignalTimeouts.length > 0) {
-              const ts = deleteSignalTimeouts.shift();
-              if (ts) {
-                await ts.trigger();
+          if (jsonObj?.autoDeletems) {
+            if (jsonObj?.qr) {
+              while (deleteQRSignalTimeouts.length > 0) {
+                const ts = deleteQRSignalTimeouts.shift();
+                if (ts) {
+                  await ts.trigger();
+                }
               }
+              deleteQRSignalTimeouts.push(retObj.timeoutObj);
+            } else {
+              deleteNonQRSignalTimeouts.push(retObj.timeoutObj);
             }
-            deleteSignalTimeouts.push(retObj.timeoutObj);
           }
           response = JSON.stringify(retObj.responseData);
           res.setHeader("Content-Type", "application/json");
@@ -696,15 +700,26 @@ announceStartup().then(() => {
     executeCleanup(1);
   });
 
-  process.on("beforeExit", () => {
+  process.on("SIGTERM", () => {
+    // Only triggers if the event loop is empty and no process.exit() was called
+    executeCleanup(0);
+  });
+
+  process.on("SIGINT", () => {
     // Only triggers if the event loop is empty and no process.exit() was called
     executeCleanup(0);
   });
 
   // Register onExit to clean Signal timeout objects
   onExit(async () => {
-    while (deleteSignalTimeouts.length > 0) {
-      const ts = deleteSignalTimeouts.shift();
+    while (deleteNonQRSignalTimeouts.length > 0) {
+      const ts = deleteNonQRSignalTimeouts.shift();
+      if (ts) {
+        await ts.trigger();
+      }
+    }
+    while (deleteQRSignalTimeouts.length > 0) {
+      const ts = deleteQRSignalTimeouts.shift();
       if (ts) {
         await ts.trigger();
       }
