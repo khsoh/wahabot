@@ -311,6 +311,7 @@ const server = http.createServer((req, res) => {
       const envelope = {
         type: "waha_event",
         headers: {
+          name: botConfig.HOSTNAME,
           hmac: incomingHmac,
           algorithm: hmacAlgorithm,
         },
