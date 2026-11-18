@@ -41,6 +41,8 @@ services:
       - "${BOT_PUBLIC_PORT}:${BOT_PUBLIC_PORT}"
     env_file:
       - .env
+    environment:
+      - HOST_SHARED_TMP=${PWD}/shared-tmp
     volumes:
       - /run/signal-cli:/run/signal-cli
       - ./data:/app/data:ro

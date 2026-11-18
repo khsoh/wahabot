@@ -9,6 +9,9 @@ const util = require("node:util");
 const parseEnv = util.parseEnv;
 const QRCode = require("qrcode");
 
+const CONTAINER_TMP_DIR = "/shared-tmp";
+const HOST_TMP_DIR = process.env.HOST_SHARED_TMP;
+
 let botConfig = null;
 let signalConfig = null;
 let secretApiKey = "";
@@ -447,23 +450,18 @@ async function sendSignalMessage(
   qrData = null,
   autoDeletems = 0,
 ) {
-  let attachmentPath = null;
-  const tmpDir = os.tmpdir();
+  let containerPath = null;
+  let hostPath = null;
+  let filename = `signal_qr_${Date.now()}_${Math.floor(Math.random() * 1000)}.png`;
 
   // 1. Generate QR code image file
   if (qrData) {
     try {
-      attachmentPath = path.join(
-        "/shared-tmp",
-        `signal_qr_${Date.now()}_${Math.floor(Math.random() * 1000)}.png`,
-      );
+      containerPath = path.join(CONTAINER_TMP_DIR, filename);
+      hostPath = path.join(HOST_TMP_DIR, filename);
 
-      fs.writeFileSync(attachmentPath, Buffer.from(qrData, "base64"));
-      // await QRCode.toFile(attachmentPath, qrData, {
-      //   errorCorrectionLevel: "H",
-      //   width: 500,
-      // });
-      console.log(`Generated volatile QR code image at: ${attachmentPath}`);
+      fs.writeFileSync(containerPath, Buffer.from(qrData, "base64"));
+      console.log(`Generated volatile QR code image at: ${containerPath}`);
     } catch (err) {
       console.error("Failed to generate QR Code image locally:", err.message);
       return null;
@@ -472,12 +470,16 @@ async function sendSignalMessage(
 
   // Helper function to safely delete the attachment
   const cleanUpFile = () => {
-    if (attachmentPath && fs.existsSync(attachmentPath)) {
+    if (containerPath && fs.existsSync(containerPath)) {
       try {
-        fs.unlinkSync(attachmentPath);
-        console.log(`Temporary QR file wiped from ${tmpDir} successfully.`);
+        fs.unlinkSync(containerPath);
+        console.log(
+          `Temporary QR file wiped from ${CONTAINER_TMP_DIR} successfully.`,
+        );
       } catch (err) {
-        console.error(`Failed to remove file from ${tmpDir}: ${err.message}`);
+        console.error(
+          `Failed to remove file from ${CONTAINER_TMP_DIR}: ${err.message}`,
+        );
       }
     }
   };
@@ -494,8 +496,8 @@ async function sendSignalMessage(
         params: {
           groupId: groupId,
           message: text,
-          ...(attachmentPath && {
-            attachments: [attachmentPath],
+          ...(hostPath && {
+            attachments: [hostPath],
           }),
         },
       };
