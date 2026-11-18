@@ -115,7 +115,7 @@ async function announceStartup() {
 
   const rawBody = JSON.stringify({
     event: "proxy.startup",
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().getTime(),
     config: botConfig,
   });
 
