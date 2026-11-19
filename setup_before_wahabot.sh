@@ -6,6 +6,9 @@ SCRIPTPATH="$(
     pwd -P
 )"
 
+# Setup HOSTNAME properly
+echo 'export HOSTNAME=$(hostname)' >>~/.bashrc
+
 pushd "$SCRIPTPATH" >/dev/null || exit
 if [[ ! $(git remote -v) ]]; then
     echo ERROR!! "$SCRIPTPATH" is not a cloned repository

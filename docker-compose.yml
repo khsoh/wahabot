@@ -47,7 +47,6 @@ services:
       - /run/signal-cli:/run/signal-cli
       - ./data:/app/data:ro
       - ./.env.example:/app/.env.example:ro
-      - /etc/hostname:/etc/host_hostname:ro
       - ~/.config/botcert:/app/certs:ro
       - ./shared-tmp:/shared-tmp
     logging:
