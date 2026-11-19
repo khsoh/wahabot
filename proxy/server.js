@@ -706,7 +706,7 @@ async function sendSignalMessage(
 
         if (autoDeletems) {
           // Set a timeout to remove the message
-          deleteSignalQueue.add(async () => {
+          deleteSignalQueue.add(async (timerObj) => {
             await removeSignalMessage(groupId, responseData.result.timestamp);
           }, autoDeletems);
         }
