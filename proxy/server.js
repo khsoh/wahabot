@@ -439,6 +439,13 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
         let jsonObj = JSON.parse(body);
         if (jsonObj.cmd === "sendSignalMessage") {
           dtcon.log(`Received sendSignalMessage: ${jsonObj.message}`);
+          if (jsonObj?.qr ?? null) {
+            // Remove previous QR timers if sending QR data
+            let qrTimers = Array.from(deleteSignalQueue.timers).filter(
+              (t) => t.metadata.hasQR,
+            );
+            await Promise.allSettled(qrTimers.map((timer) => timer.fire()));
+          }
           let responseData = await sendSignalMessage(
             signalConfig.GROUPID,
             jsonObj.message,
@@ -728,9 +735,20 @@ async function sendSignalMessage(
 
         if (autoDeletems) {
           // Set a timeout to remove the message
-          deleteSignalQueue.add(async (timerObj) => {
-            await removeSignalMessage(groupId, responseData.result.timestamp);
-          }, autoDeletems);
+          deleteSignalQueue.add(
+            async (timerObj) => {
+              await removeSignalMessage(
+                timerObj.metadata.groupId,
+                timerObj.metadata.timestamp,
+              );
+            },
+            autoDeletems,
+            {
+              groupId: groupId,
+              timestamp: responseData.result.timestamp,
+              hasQR: qrData != null,
+            },
+          );
         }
         resolve(responseData);
       } catch (parseErr) {
