@@ -19,6 +19,7 @@ let secretApiKey = "";
 class TimerQueue {
   constructor(options = {}) {
     this.timers = new Set();
+    this.runningTasks = new Set(); // Tracks in-flight async callbacks
     this.flushOnExit = Boolean(options.flushOnExit);
   }
 
@@ -37,7 +38,7 @@ class TimerQueue {
       callback,
       timeoutRef: null,
       cancel: () => this.remove(timerObj),
-      fire: () => this._execute(timerObj, true),
+      fire: () => this._execute(timerObj),
     };
 
     timerObj.timeoutRef = setTimeout(() => {
@@ -51,21 +52,29 @@ class TimerQueue {
   /**
    * Internal helper to remove a timer and safely run its callback.
    */
-  _execute(timerObj, cancelNativeTimeout = false) {
+  _execute(timerObj) {
     if (!this.timers.has(timerObj)) {
-      return;
+      return Promise.resolve();
     }
 
-    if (cancelNativeTimeout) {
-      clearTimeout(timerObj.timeoutRef);
-    }
-
+    clearTimeout(timerObj.timeoutRef);
     this.timers.delete(timerObj);
-    try {
-      timerObj.callback(timerObj);
-    } catch (err) {
-      dtcon.error("Error in timer callback:", err);
-    }
+
+    const taskPromise = (async () => {
+      try {
+        await timerObj.callback(timerObj);
+      } catch (err) {
+        dtcon.error("Error in timer callback:", err);
+      }
+    })();
+
+    // Track in-flight execution so cleanup() can await it
+    this.runningTasks.add(taskPromise);
+    taskPromise.finally(() => {
+      this.runningTasks.delete(taskPromise);
+    });
+
+    return taskPromise;
   }
 
   /**
@@ -83,45 +92,58 @@ class TimerQueue {
   /**
    * Immediately fires all pending timers in the queue and clears their timeouts.
    */
-  flushAll() {
+  async flushAll() {
     dtcon.log(`Flushing ${this.timers.size} active timer(s)...`);
     const pendingTimers = Array.from(this.timers);
-    this.timers.clear();
 
-    for (const timerObj of pendingTimers) {
-      clearTimeout(timerObj.timeoutRef);
-      try {
-        timerObj.callback(timerObj);
-      } catch (err) {
-        dtcon.error("Error flushing timer callback:", err);
-      }
-    }
+    // Trigger all pending timers
+    const flushPromises = pendingTimers.map((timerObj) =>
+      this._execute(timerObj),
+    );
+
+    // Wait for both newly flushed timers and any callbacks that were already running
+    await Promise.allSettled([
+      ...flushPromises,
+      ...Array.from(this.runningTasks),
+    ]);
   }
 
   /**
    * Clears all active timers in the queue.
    */
-  clearAll() {
+  async clearAll() {
     dtcon.log(`Cleaning up ${this.timers.size} active timer(s)...`);
     for (const timerObj of this.timers) {
       clearTimeout(timerObj.timeoutRef);
     }
     this.timers.clear();
+
+    // Still wait for any callbacks that triggered just before clearAll() was called
+    if (this.runningTasks.size > 0) {
+      dtcon.log(
+        `Waiting for ${this.runningTasks.size} in-flight timer(s) to finish...`,
+      );
+      await Promise.allSettled(Array.from(this.runningTasks));
+    }
   }
 
   /**
    * Runs the configured cleanup strategy (flushAll or clearAll).
    */
-  cleanup() {
+  async cleanup() {
     if (this.flushOnExit) {
-      this.flushAll();
+      await this.flushAll();
     } else {
-      this.clearAll();
+      await this.clearAll();
     }
   }
 }
 
 const deleteSignalQueue = new TimerQueue({ flushOnExit: true });
+
+function sleep(millis) {
+  return new Promise((resolve) => setTimeout(resolve, millis));
+}
 
 function gentsdate(epochTime, override_opts = {}) {
   const options = {
@@ -772,7 +794,7 @@ announceStartup().then(() => {
 
   onExit(async () => {
     // cleanup the timer queues
-    deleteSignalQueue.cleanup();
+    await deleteSignalQueue.cleanup();
 
     // Stop accepting new TCP connections from GAS
     gasServer.close(() => {
