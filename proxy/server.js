@@ -16,43 +16,112 @@ let botConfig = null;
 let signalConfig = null;
 let secretApiKey = "";
 
-class EnhancedTimeout {
-  constructor(callback, delay, ...args) {
-    this.callback = callback;
-    this.args = args;
-    this.id = setTimeout(async () => {
-      this.id = null;
-      try {
-        await this.callback(...this.args);
-      } catch (err) {
-        dtcon.error(
-          `EnhancedTimeout background execution error: ${err.message}`,
-        );
-      }
+class TimerQueue {
+  constructor(options = {}) {
+    this.timers = new Set();
+    this.flushOnExit = Boolean(options.flushOnExit);
+  }
+
+  /**
+   * Schedules an enhanced timeout and adds it to the queue.
+   * @param {Function} callback - The function to execute.
+   * @param {number} delay - Delay in milliseconds.
+   * @param {Object} metadata - Optional custom data (e.g., name, id).
+   */
+  add(callback, delay, metadata = {}) {
+    const timerObj = {
+      id: Symbol("timer"),
+      createdAt: Date.now(),
+      delay,
+      metadata,
+      callback,
+      timeoutRef: null,
+      cancel: () => this.remove(timerObj),
+      fire: () => this._execute(timerObj, true),
+    };
+
+    timerObj.timeoutRef = setTimeout(() => {
+      this._execute(timerObj);
     }, delay);
+
+    this.timers.add(timerObj);
+    return timerObj;
   }
 
-  async trigger() {
-    if (this.id !== null) {
-      clearTimeout(this.id);
-      this.id = null;
-
-      // Await the callback in case the caller wants to wait for it
-      return await this.callback(...this.args);
+  /**
+   * Internal helper to remove a timer and safely run its callback.
+   */
+  _execute(timerObj, cancelNativeTimeout = false) {
+    if (!this.timers.has(timerObj)) {
+      return;
     }
-    return null;
+
+    if (cancelNativeTimeout) {
+      clearTimeout(timerObj.timeoutRef);
+    }
+
+    this.timers.delete(timerObj);
+    try {
+      timerObj.callback(timerObj);
+    } catch (err) {
+      dtcon.error("Error in timer callback:", err);
+    }
   }
 
-  cancel() {
-    if (this.id !== null) {
-      clearTimeout(this.id);
-      this.id = null;
+  /**
+   * Manually cancels a timer and removes it from the queue.
+   */
+  remove(timerObj) {
+    if (this.timers.has(timerObj)) {
+      clearTimeout(timerObj.timeoutRef);
+      this.timers.delete(timerObj);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Immediately fires all pending timers in the queue and clears their timeouts.
+   */
+  flushAll() {
+    dtcon.log(`Flushing ${this.timers.size} active timer(s)...`);
+    const pendingTimers = Array.from(this.timers);
+    this.timers.clear();
+
+    for (const timerObj of pendingTimers) {
+      clearTimeout(timerObj.timeoutRef);
+      try {
+        timerObj.callback(timerObj);
+      } catch (err) {
+        dtcon.error("Error flushing timer callback:", err);
+      }
+    }
+  }
+
+  /**
+   * Clears all active timers in the queue.
+   */
+  clearAll() {
+    dtcon.log(`Cleaning up ${this.timers.size} active timer(s)...`);
+    for (const timerObj of this.timers) {
+      clearTimeout(timerObj.timeoutRef);
+    }
+    this.timers.clear();
+  }
+
+  /**
+   * Runs the configured cleanup strategy (flushAll or clearAll).
+   */
+  cleanup() {
+    if (this.flushOnExit) {
+      this.flushAll();
+    } else {
+      this.clearAll();
     }
   }
 }
 
-const deleteQRSignalTimeouts = [];
-const deleteNonQRSignalTimeouts = [];
+const deleteSignalQueue = new TimerQueue({ flushOnExit: true });
 
 function gentsdate(epochTime, override_opts = {}) {
   const options = {
@@ -337,7 +406,7 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
 
     req.on("end", async function () {
       try {
-        dtcon.log("Processing end of sendSignalMessage");
+        dtcon.log("Processing end of gasServer packet");
         // Check header has API key
         const XapiKey = req.headers?.["x-api-key"];
         if (XapiKey !== secretApiKey) {
@@ -348,26 +417,21 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
         let jsonObj = JSON.parse(body);
         if (jsonObj.cmd === "sendSignalMessage") {
           dtcon.log(`Received sendSignalMessage: ${jsonObj.message}`);
-          let retObj = await sendSignalMessage(
+          let responseData = await sendSignalMessage(
             signalConfig.GROUPID,
             jsonObj.message,
             jsonObj?.qr ?? null,
             jsonObj?.autoDeletems ?? 0,
           );
-          if (jsonObj?.autoDeletems) {
-            if (jsonObj?.qr) {
-              while (deleteQRSignalTimeouts.length > 0) {
-                const ts = deleteQRSignalTimeouts.shift();
-                if (ts) {
-                  await ts.trigger();
-                }
-              }
-              deleteQRSignalTimeouts.push(retObj.timeoutObj);
-            } else {
-              deleteNonQRSignalTimeouts.push(retObj.timeoutObj);
-            }
-          }
-          response = JSON.stringify(retObj.responseData);
+          response = JSON.stringify(responseData);
+          res.setHeader("Content-Type", "application/json");
+        } else if (jsonObj.cmd === "removeSignalMessage") {
+          dtcon.log(`Received removeSignalMessage: ${jsonObj.timestamp}`);
+          let retObj = await removeSignalMessage(
+            signalConfig.GROUPID,
+            jsonObj.timestamp,
+          );
+          response = JSON.stringify(retObj);
           res.setHeader("Content-Type", "application/json");
         }
       } catch (e) {
@@ -639,18 +703,14 @@ async function sendSignalMessage(
           throw new Error("Failed to get proper signal-cli daemon response");
         }
         dtcon.log("Daemon Response:", JSON.stringify(responseData, null, 2));
-        let retval = {
-          responseData: responseData,
-          timeoutObj: null,
-        };
 
         if (autoDeletems) {
           // Set a timeout to remove the message
-          retval.timeoutObj = new EnhancedTimeout(async () => {
+          deleteSignalQueue.add(async () => {
             await removeSignalMessage(groupId, responseData.result.timestamp);
           }, autoDeletems);
         }
-        resolve(retval);
+        resolve(responseData);
       } catch (parseErr) {
         dtcon.error(
           `Failed to parse JSON response from daemon: ${parseErr.message}`,
@@ -710,20 +770,18 @@ announceStartup().then(() => {
     executeCleanup(0);
   });
 
-  // Register onExit to clean Signal timeout objects
   onExit(async () => {
-    while (deleteNonQRSignalTimeouts.length > 0) {
-      const ts = deleteNonQRSignalTimeouts.shift();
-      if (ts) {
-        await ts.trigger();
-      }
-    }
-    while (deleteQRSignalTimeouts.length > 0) {
-      const ts = deleteQRSignalTimeouts.shift();
-      if (ts) {
-        await ts.trigger();
-      }
-    }
+    // cleanup the timer queues
+    deleteSignalQueue.cleanup();
+
+    // Stop accepting new TCP connections from GAS
+    gasServer.close(() => {
+      dtcon.log("GAS Server closed.");
+    });
+    // Stop accepting new TCP connections from WAHA server
+    server.close(() => {
+      dtcon.log("WAHA Server closed.");
+    });
   });
 
   registerWahaWebhook();
