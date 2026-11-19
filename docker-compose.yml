@@ -43,6 +43,7 @@ services:
       - .env
     environment:
       - HOST_SHARED_TMP=${PWD}/shared-tmp
+      - WAHA_CLIENT_DEVICE_NAME=${HOSTNAME}
     volumes:
       - /run/signal-cli:/run/signal-cli
       - ./data:/app/data:ro

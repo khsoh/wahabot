@@ -203,7 +203,7 @@ function loadConfig() {
 
   const { SIGNAL: signalRaw, ...botConfig } = envConfig;
   const signalConfig = JSON.parse(signalRaw);
-  botConfig.HOSTNAME = process.env.HOSTNAME;
+  botConfig.HOSTNAME = process.env.WAHA_CLIENT_DEVICE_NAME;
   botConfig.WAHAURL = `https://${botConfig.HOSTNAME}.${botConfig.DOMAIN}:${botConfig.WAHA_PUBLIC_PORT}`;
   botConfig.BOTURL = `https://${botConfig.HOSTNAME}.${botConfig.DOMAIN}:${botConfig.BOT_PUBLIC_PORT}`;
   botConfig.PROXY_WEBHOOK_URL = `http://waha-proxy:${botConfig.PROXY_PORT}/webhook`;
