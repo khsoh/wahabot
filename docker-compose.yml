@@ -25,6 +25,12 @@ services:
     volumes:
       - ./sessions:/app/.sessions
       - ~/.config/botcert:/app/certs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('https').get({hostname:'localhost',port:3000,path:'/ping',rejectUnauthorized:false}, r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -37,6 +43,9 @@ services:
     # Re-enable when ready
     # restart: unless-stopped
     restart: "no"
+    depends_on:
+      waha:
+        condition: service_healthy
     ports:
       - "${BOT_PUBLIC_PORT}:${BOT_PUBLIC_PORT}"
     env_file:

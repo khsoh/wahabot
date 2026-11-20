@@ -7,7 +7,8 @@ SCRIPTPATH="$(
 )"
 
 # Setup HOSTNAME properly
-echo 'export HOSTNAME=$(hostname)' >>~/.bashrc
+echo 'HOSTNAME=$(hostname)' >>~/.profile
+sed -i '1i export HOSTNAME=$(hostname)' ~/.bashrc
 
 pushd "$SCRIPTPATH" >/dev/null || exit
 if [[ ! $(git remote -v) ]]; then
