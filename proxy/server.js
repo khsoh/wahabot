@@ -348,6 +348,7 @@ async function announceStartup() {
 
   const startupEnvelope = {
     headers: {
+      hostname: botConfig.HOSTNAME,
       hmac: signature,
       algorithm: "sha512",
     },
