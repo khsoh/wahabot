@@ -653,8 +653,10 @@ const server = http.createServer((req, res) => {
         body: JSON.stringify(envelope),
       });
 
+      const gastext = await gasResponse.text();
+
       dtcon.log(
-        `GAS response to ${wahaObj?.event ?? "NULL"}: ${JSON.stringify(gasResponse, null, 2)}`,
+        `GAS response to ${wahaObj?.event ?? "NULL"}: ${gasResponse.status} ${gastext}`,
       );
 
       if (delayedPromise) {
