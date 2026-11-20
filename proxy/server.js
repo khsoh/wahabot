@@ -140,6 +140,7 @@ class TimerQueue {
 }
 
 const deleteSignalQueue = new TimerQueue({ flushOnExit: true });
+let qrTimers = new Set();
 
 function sleep(millis) {
   return new Promise((resolve) => setTimeout(resolve, millis));
@@ -440,20 +441,20 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
         let jsonObj = JSON.parse(body);
         if (jsonObj.cmd === "sendSignalMessage") {
           dtcon.log(`Received sendSignalMessage: ${jsonObj.message}`);
-          // if (jsonObj?.qr ?? null) {
-          //   // Remove previous QR timers if sending QR data
-          //   let qrTimers = Array.from(deleteSignalQueue.timers).filter(
-          //     (t) => t.metadata.hasQR,
-          //   );
-          //   await Promise.allSettled(qrTimers.map((timer) => timer.fire()));
-          // }
-          let responseData = await sendSignalMessage(
-            signalConfig.GROUPID,
-            jsonObj.message,
-            jsonObj?.qr ?? null,
-            jsonObj?.autoDeletems ?? 0,
-          );
-          response = JSON.stringify(responseData);
+          if ((jsonObj?.qr ?? null) && qrTimers.size > 0) {
+            await Promise.allSettled(qrTimers.map((timer) => timer.fire()));
+          }
+          let { responseData, timerObj = null } =
+            (await sendSignalMessage(
+              signalConfig.GROUPID,
+              jsonObj.message,
+              jsonObj?.qr ?? null,
+              jsonObj?.autoDeletems ?? 0,
+            )) || {};
+          response = JSON.stringify(responseData || {});
+          if (timerObj) {
+            qrTimers.add(timerObj);
+          }
           res.setHeader("Content-Type", "application/json");
         } else if (jsonObj.cmd === "removeSignalMessage") {
           dtcon.log(`Received removeSignalMessage: ${jsonObj.timestamp}`);
@@ -734,9 +735,13 @@ async function sendSignalMessage(
         }
         dtcon.log("Daemon Response:", JSON.stringify(responseData, null, 2));
 
+        let retObj = {
+          responseData: responseData,
+        };
+
         if (autoDeletems) {
           // Set a timeout to remove the message
-          deleteSignalQueue.add(
+          retObj.timerObj = deleteSignalQueue.add(
             async (timerObj) => {
               await removeSignalMessage(
                 timerObj.metadata.groupId,
@@ -751,7 +756,7 @@ async function sendSignalMessage(
             },
           );
         }
-        resolve(responseData);
+        resolve(retObj);
       } catch (parseErr) {
         dtcon.error(
           `Failed to parse JSON response from daemon: ${parseErr.message}`,
