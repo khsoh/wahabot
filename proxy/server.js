@@ -314,7 +314,7 @@ function loadConfig() {
   return { botConfig, signalConfig };
 }
 
-function sendToWaha(path, method, payloadObj) {
+function sendToWaha(path, method, payloadObj, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const body = payloadObj ? JSON.stringify(payloadObj) : "";
 
@@ -325,11 +325,14 @@ function sendToWaha(path, method, payloadObj) {
         path: path,
         method: method,
         servername: `${botConfig.HOSTNAME}.${botConfig.DOMAIN}`,
-        headers: {
-          "Content-Type": "application/json",
-          "X-Api-Key": secretApiKey,
-          "Content-Length": Buffer.byteLength(body),
-        },
+        headers: Object.assign(
+          {
+            "Content-Type": "application/json",
+            "X-Api-Key": secretApiKey,
+            "Content-Length": Buffer.byteLength(body),
+          },
+          extraHeaders,
+        ),
       },
       (res) => {
         let data = "";
@@ -346,7 +349,7 @@ function sendToWaha(path, method, payloadObj) {
 
 async function announceStartup() {
   ({ botConfig, signalConfig } = loadConfig());
-  let timestamp = new Date().getTime();
+  let timestamp = Date.now();
 
   wahasession.timestamp = timestamp;
 
@@ -362,6 +365,7 @@ async function announceStartup() {
     .digest("hex");
 
   const startupEnvelope = {
+    type: "proxy_event",
     headers: {
       hostname: botConfig.HOSTNAME,
       hmac: signature,
@@ -575,7 +579,7 @@ const server = http.createServer((req, res) => {
           } else if (session.status === "FAILED") {
             // session failed due to authorization require or device has been disconnected
             dtcon.log(
-              `session.status FAILED reason: ${JSON.stringify(wahaObj.payload.data.reason)}`,
+              `session.status FAILED reason: ${JSON.stringify(wahaObj.payload.data?.reason)}`,
             );
             /**
              * Check object in wahaObj.payload.data.reason
@@ -595,6 +599,46 @@ const server = http.createServer((req, res) => {
             // session required to scan QR code.  Should fetch base64-encode image via
             // GET /api/{session}/auth/qr?format=image
             //   Accept: application/json
+            let result = await sendToWaha(
+              `/api/${botConfig.NAME}/auth/qr?format=image`,
+              "GET",
+              null,
+              { Accept: "application/json" },
+            );
+            dtcon.log(`QR result: ${JSON.stringify(result, null, 2)}`);
+            if (result.status === 200) {
+              envelope.type = "proxy_event";
+              let qrBody = JSON.stringify({
+                event: "proxy.qr",
+                timestamp: Date.now(),
+                qr: result.body,
+              });
+              envelope.headers.hmac = crypto
+                .createHmac("sha512", botConfig.WAHA_HMAC_SECRET)
+                .update(qrBody)
+                .digest("hex");
+              envelope.rawBody = qrBody;
+
+              try {
+                // Fire all Auth QR timers before sending Signal message
+                await fire_authqrTimers();
+
+                let { responseData, timerObj = null } = await sendSignalMessage(
+                  signalConfig.GROUPID,
+                  `Please open the WhatsApp app on the ZBPA phone and scan this QR code to link ${botConfig.HOSTNAME} to the ZBPA WhatsApp account`,
+                  JSON.parse(result.body).data,
+                  1000 * 60 * 5,
+                );
+                if (timerObj) {
+                  qrTimers.add(timerObj);
+                }
+              } catch (e) {
+                dtcon.error(
+                  `Failed to send QR image to signal ${e?.message || JSON.stringify(e)}`,
+                );
+                dtcon.error(`QR text: ${result.body}`);
+              }
+            }
           }
         } else {
           dtcon.error(
