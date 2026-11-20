@@ -142,6 +142,13 @@ class TimerQueue {
 const deleteSignalQueue = new TimerQueue({ flushOnExit: true });
 let qrTimers = new Set();
 
+async function fire_authqrTimers() {
+  const timersToFire = Array.from(qrTimers);
+  qrTimers = new Set();
+
+  return Promise.allSettled(timersToFire.map((timer) => timer.fire()));
+}
+
 function sleep(millis) {
   return new Promise((resolve) => setTimeout(resolve, millis));
 }
@@ -442,8 +449,7 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
         if (jsonObj.cmd === "sendSignalMessage") {
           dtcon.log(`Received sendSignalMessage: ${jsonObj.message}`);
           if ((jsonObj?.qr ?? null) && qrTimers.size > 0) {
-            await Promise.allSettled(qrTimers.map((timer) => timer.fire()));
-            qrTimers = new Set();
+            await fire_authqrTimers();
           }
           let { responseData, timerObj = null } =
             (await sendSignalMessage(
@@ -517,6 +523,19 @@ const server = http.createServer((req, res) => {
         rawBody: rawBody,
       };
 
+      let wahaObj = JSON.parse(rawBody) || {};
+      let delayedPromise = null;
+      if (
+        wahaObj?.event === "session.status" &&
+        wahaObj.payload.statuses.at(-1).status === "WORKING"
+      ) {
+        dtcon.log(
+          `Received WORKING session.status event.  Removing earlier QR messages`,
+        );
+        // Authenticated event - kill the QR timers
+        delayedPromise = fire_authqrTimers();
+      }
+
       const gasResponse = await fetch(botConfig.GASURL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -524,6 +543,12 @@ const server = http.createServer((req, res) => {
       });
 
       dtcon.log(`GAS response: ${JSON.stringify(gasResponse, null, 2)}`);
+
+      if (delayedPromise) {
+        await delayedPromise;
+        dtcon.log(`Completed removing earlier QR messages`);
+      }
+
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({ forwarded: true, gasStatus: gasResponse.status }),
@@ -738,6 +763,7 @@ async function sendSignalMessage(
 
         let retObj = {
           responseData: responseData,
+          timerObj: null,
         };
 
         if (autoDeletems) {
