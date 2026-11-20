@@ -439,13 +439,13 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
         let jsonObj = JSON.parse(body);
         if (jsonObj.cmd === "sendSignalMessage") {
           dtcon.log(`Received sendSignalMessage: ${jsonObj.message}`);
-          if (jsonObj?.qr ?? null) {
-            // Remove previous QR timers if sending QR data
-            let qrTimers = Array.from(deleteSignalQueue.timers).filter(
-              (t) => t.metadata.hasQR,
-            );
-            await Promise.allSettled(qrTimers.map((timer) => timer.fire()));
-          }
+          // if (jsonObj?.qr ?? null) {
+          //   // Remove previous QR timers if sending QR data
+          //   let qrTimers = Array.from(deleteSignalQueue.timers).filter(
+          //     (t) => t.metadata.hasQR,
+          //   );
+          //   await Promise.allSettled(qrTimers.map((timer) => timer.fire()));
+          // }
           let responseData = await sendSignalMessage(
             signalConfig.GROUPID,
             jsonObj.message,
@@ -507,7 +507,7 @@ const server = http.createServer((req, res) => {
       const envelope = {
         type: "waha_event",
         headers: {
-          name: botConfig.HOSTNAME,
+          hostname: botConfig.HOSTNAME,
           hmac: incomingHmac,
           algorithm: hmacAlgorithm,
         },
