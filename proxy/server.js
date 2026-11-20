@@ -653,7 +653,9 @@ const server = http.createServer((req, res) => {
         body: JSON.stringify(envelope),
       });
 
-      dtcon.log(`GAS response: ${JSON.stringify(gasResponse, null, 2)}`);
+      dtcon.log(
+        `GAS response to ${wahaObj?.event ?? "NULL"}: ${JSON.stringify(gasResponse, null, 2)}`,
+      );
 
       if (delayedPromise) {
         await delayedPromise;
