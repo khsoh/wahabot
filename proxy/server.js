@@ -15,6 +15,10 @@ const HOST_TMP_DIR = process.env.HOST_SHARED_TMP;
 let botConfig = null;
 let signalConfig = null;
 let secretApiKey = "";
+let wahasession = {
+  status: "proxy.startup",
+  timestamp: 0,
+};
 
 class TimerQueue {
   constructor(options = {}) {
@@ -342,10 +346,13 @@ function sendToWaha(path, method, payloadObj) {
 
 async function announceStartup() {
   ({ botConfig, signalConfig } = loadConfig());
+  let timestamp = new Date().getTime();
+
+  wahasession.timestamp = timestamp;
 
   const rawBody = JSON.stringify({
     event: "proxy.startup",
-    timestamp: new Date().getTime(),
+    timestamp: timestamp,
     config: botConfig,
   });
 
@@ -525,15 +532,51 @@ const server = http.createServer((req, res) => {
 
       let wahaObj = JSON.parse(rawBody) || {};
       let delayedPromise = null;
-      if (
-        wahaObj?.event === "session.status" &&
-        wahaObj.payload.statuses.at(-1).status === "WORKING"
-      ) {
+      if (wahaObj?.event === "session.status") {
+        let session = wahaObj.payload.statuses.at(-1);
         dtcon.log(
-          `Received WORKING session.status event.  Removing earlier QR messages`,
+          `Received ${session.status} session.status event at timestamp ${session.timestamp}`,
         );
-        // Authenticated event - kill the QR timers
-        delayedPromise = fire_authqrTimers();
+
+        if (session.timestamp >= wahasession.timestamp) {
+          dtcon.log(
+            `Saving newer session.status for timestamp ${session.timestamp} and processing it`,
+          );
+          wahasession.status = session.status;
+          wahasession.timestamp = session.timestamp;
+
+          if (session.status === "WORKING") {
+            // WORKING event - means authenticated fire all the QR timers
+            delayedPromise = fire_authqrTimers();
+          } else if (session.status === "STOPPED") {
+            // session is stopped
+            //  Can be caused by the following:
+            //  - stopped by user via POST /api/sessions/{session}/stop
+            //  - logout by user via POST /api/sessions/{session}/logout
+            //  - QR scan timeout
+            //  - Container restart without auto-start.  The WAHA Docker container restarted
+            //    and WHATSAPP_RESTART_ALL_SESSIONS is disabled
+          } else if (session.status === "FAILED") {
+            // session failed due to authorization require or device has been disconnected
+            /**
+             * Check for wahaObj.payload.data.reason
+             * - pay attention to "TemporaryBan" reason.
+             * - note also "LoggedOut" reason
+             * Other reasons:
+             *   ClientOutdated
+             *   StreamReplaced
+             *   ConnectionFailure
+             *   CATRefreshError
+             * Should call POST /api/sessions/{session}/logout to clean up when reason is "LoggedOut"
+             *   If desire to restart auth process:
+             *     call POST /api/sessions/{session}/start - to start the session
+             */
+          } else if (session.status === "SCAN_QR_CODE") {
+            // session required to scan QR code.  Should fetch base64-encode image via
+            // GET /api/{session}/auth/qr?format=image
+            //   Accept: application/json
+          }
+        }
       }
 
       const gasResponse = await fetch(botConfig.GASURL, {
