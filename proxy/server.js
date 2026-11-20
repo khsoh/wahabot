@@ -443,6 +443,7 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
           dtcon.log(`Received sendSignalMessage: ${jsonObj.message}`);
           if ((jsonObj?.qr ?? null) && qrTimers.size > 0) {
             await Promise.allSettled(qrTimers.map((timer) => timer.fire()));
+            qrTimers = new Set();
           }
           let { responseData, timerObj = null } =
             (await sendSignalMessage(
