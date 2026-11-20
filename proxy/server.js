@@ -529,9 +529,25 @@ const server = http.createServer((req, res) => {
         },
         rawBody: rawBody,
       };
+      // Compute signature of incoming packet
+      const computedHmac = crypto
+        .createHmac("sha512", botConfig.WAHA_HMAC_SECRET)
+        .update(rawBody)
+        .digest("hex");
 
       let wahaObj = JSON.parse(rawBody) || {};
       let delayedPromise = null;
+
+      if (computedHmac !== incomingHmac) {
+        dtcon.error(
+          `WARNING: Mismatched signature in WAHA packet:\n${JSON.stringify(wahaObj, null, 2)}`,
+        );
+        dtcon.error(`   Incoming signature: ${incomingHmac}`);
+        dtcon.error(`   Computed signature: ${computedHmac}`);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({}));
+        return;
+      }
       if (wahaObj?.event === "session.status") {
         let session = wahaObj.payload.statuses.at(-1);
         dtcon.log(
@@ -558,8 +574,12 @@ const server = http.createServer((req, res) => {
             //    and WHATSAPP_RESTART_ALL_SESSIONS is disabled
           } else if (session.status === "FAILED") {
             // session failed due to authorization require or device has been disconnected
+            dtcon.log(
+              `session.status FAILED reason: ${JSON.stringify(wahaObj.payload.data.reason)}`,
+            );
             /**
-             * Check for wahaObj.payload.data.reason
+             * Check object in wahaObj.payload.data.reason
+             * Reference: https://waha.devlike.pro/docs/engines/gows/#sessionstatus
              * - pay attention to "TemporaryBan" reason.
              * - note also "LoggedOut" reason
              * Other reasons:
@@ -576,6 +596,10 @@ const server = http.createServer((req, res) => {
             // GET /api/{session}/auth/qr?format=image
             //   Accept: application/json
           }
+        } else {
+          dtcon.error(
+            `=== Old session.status packet ignored.  Current timestamp: ${wahasession.timestamp}`,
+          );
         }
       }
 
