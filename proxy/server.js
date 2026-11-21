@@ -534,6 +534,9 @@ const server = http.createServer((req, res) => {
         rawBody: rawBody,
       };
 
+      let wahaObj = JSON.parse(rawBody) || {};
+      let delayedPromise = null;
+
       if (wahaObj?.event === "session.status") {
         let session = wahaObj.payload.statuses.at(-1);
         dtcon.log(
