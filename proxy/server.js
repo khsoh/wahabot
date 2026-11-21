@@ -605,6 +605,12 @@ const server = http.createServer((req, res) => {
         );
       }
 
+      // Quickly return to WAHA server with ok response
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({ forwarded: true, gasStatus: gasResponse.status }),
+      );
+
       const gasJson = await gasResponse.json();
 
       dtcon.log(
@@ -668,15 +674,12 @@ const server = http.createServer((req, res) => {
         await delayedPromise;
         dtcon.log(`Completed removing earlier QR messages`);
       }
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({ forwarded: true, gasStatus: gasResponse.status }),
-      );
     } catch (err) {
       dtcon.error("Proxy error:", err.message);
-      res.writeHead(500);
-      res.end("Internal Server Error");
+      if (!res.headersSent) {
+        res.writeHead(500);
+        res.end("Internal Server Error");
+      }
     }
   });
 });
