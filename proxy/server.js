@@ -533,25 +533,7 @@ const server = http.createServer((req, res) => {
         },
         rawBody: rawBody,
       };
-      // Compute signature of incoming packet
-      const computedHmac = crypto
-        .createHmac("sha512", botConfig.WAHA_HMAC_SECRET)
-        .update(rawBody)
-        .digest("hex");
 
-      let wahaObj = JSON.parse(rawBody) || {};
-      let delayedPromise = null;
-
-      if (computedHmac !== incomingHmac) {
-        dtcon.error(
-          `WARNING: Mismatched signature in WAHA packet:\n${JSON.stringify(wahaObj, null, 2)}`,
-        );
-        dtcon.error(`   Incoming signature: ${incomingHmac}`);
-        dtcon.error(`   Computed signature: ${computedHmac}`);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({}));
-        return;
-      }
       if (wahaObj?.event === "session.status") {
         let session = wahaObj.payload.statuses.at(-1);
         dtcon.log(
@@ -599,46 +581,6 @@ const server = http.createServer((req, res) => {
             // session required to scan QR code.  Should fetch base64-encode image via
             // GET /api/{session}/auth/qr?format=image
             //   Accept: application/json
-            let result = await sendToWaha(
-              `/api/${botConfig.NAME}/auth/qr?format=image`,
-              "GET",
-              null,
-              { Accept: "application/json" },
-            );
-            dtcon.log(`QR result: ${JSON.stringify(result, null, 2)}`);
-            if (result.status === 200) {
-              envelope.type = "proxy_event";
-              let qrBody = JSON.stringify({
-                event: "proxy.qr",
-                timestamp: Date.now(),
-                qr: result.body,
-              });
-              envelope.headers.hmac = crypto
-                .createHmac("sha512", botConfig.WAHA_HMAC_SECRET)
-                .update(qrBody)
-                .digest("hex");
-              envelope.rawBody = qrBody;
-
-              try {
-                // Fire all Auth QR timers before sending Signal message
-                await fire_authqrTimers();
-
-                let { responseData, timerObj = null } = await sendSignalMessage(
-                  signalConfig.GROUPID,
-                  `Please open the WhatsApp app on the ZBPA phone and scan this QR code to link ${botConfig.HOSTNAME} to the ZBPA WhatsApp account`,
-                  JSON.parse(result.body).data,
-                  1000 * 60 * 5,
-                );
-                if (timerObj) {
-                  qrTimers.add(timerObj);
-                }
-              } catch (e) {
-                dtcon.error(
-                  `Failed to send QR image to signal ${e?.message || JSON.stringify(e)}`,
-                );
-                dtcon.error(`QR text: ${result.body}`);
-              }
-            }
           }
         } else {
           dtcon.error(
@@ -653,11 +595,70 @@ const server = http.createServer((req, res) => {
         body: JSON.stringify(envelope),
       });
 
-      const gastext = await gasResponse.text();
+      if (!gasResponse.ok) {
+        throw new Error(
+          `GAS HTTPS infrastructure error: ${gasResponse.status}`,
+        );
+      }
+
+      const gasJson = await gasResponse.json();
 
       dtcon.log(
-        `GAS response to ${wahaObj?.event ?? "NULL"}: ${gasResponse.status} ${gastext}`,
+        `GAS response to ${wahaObj?.event ?? "NULL"}: ${gasResponse.status} ${JSON.stringify(gasJson, null, 2)}`,
       );
+
+      if (gasJson.status === "ok" && session.status === "SCAN_QR_CODE") {
+        // session required to scan QR code.  Should fetch base64-encode image via
+        // GET /api/{session}/auth/qr?format=image
+        //   Accept: application/json
+        let result = await sendToWaha(
+          `/api/${botConfig.NAME}/auth/qr?format=image`,
+          "GET",
+          null,
+          { Accept: "application/json" },
+        );
+        dtcon.log(`QR result: ${JSON.stringify(result, null, 2)}`);
+        if (result.status === 200) {
+          envelope.type = "proxy_event";
+          let qrBody = JSON.stringify({
+            event: "proxy.qr",
+            timestamp: Date.now(),
+            qr: result.body,
+          });
+          envelope.headers.hmac = crypto
+            .createHmac("sha512", botConfig.WAHA_HMAC_SECRET)
+            .update(qrBody)
+            .digest("hex");
+          envelope.rawBody = qrBody;
+
+          try {
+            // Fire all Auth QR timers before sending Signal message
+            await fire_authqrTimers();
+
+            let { responseData, timerObj = null } = await sendSignalMessage(
+              signalConfig.GROUPID,
+              `Please open the WhatsApp app on the ZBPA phone and scan this QR code to link ${botConfig.HOSTNAME} to the ZBPA WhatsApp account`,
+              JSON.parse(result.body).data,
+              1000 * 60 * 5,
+            );
+            if (timerObj) {
+              qrTimers.add(timerObj);
+            }
+
+            // Send the QR image to GAS
+            await fetch(botConfig.GASURL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(envelope),
+            });
+          } catch (e) {
+            dtcon.error(
+              `Failed to send QR image to signal ${e?.message || JSON.stringify(e)}`,
+            );
+            dtcon.error(`QR text: ${result.body}`);
+          }
+        }
+      }
 
       if (delayedPromise) {
         await delayedPromise;
