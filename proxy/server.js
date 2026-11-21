@@ -536,9 +536,10 @@ const server = http.createServer((req, res) => {
 
       let wahaObj = JSON.parse(rawBody) || {};
       let delayedPromise = null;
+      let session = null;
 
       if (wahaObj?.event === "session.status") {
-        let session = wahaObj.payload.statuses.at(-1);
+        session = wahaObj.payload.statuses.at(-1);
         dtcon.log(
           `Received ${session.status} session.status event at timestamp ${session.timestamp}`,
         );
@@ -610,7 +611,7 @@ const server = http.createServer((req, res) => {
         `GAS response to ${wahaObj?.event ?? "NULL"}: ${gasResponse.status} ${JSON.stringify(gasJson, null, 2)}`,
       );
 
-      if (gasJson.status === "ok" && session.status === "SCAN_QR_CODE") {
+      if (gasJson.status === "ok" && session?.status === "SCAN_QR_CODE") {
         // session required to scan QR code.  Should fetch base64-encode image via
         // GET /api/{session}/auth/qr?format=image
         //   Accept: application/json
