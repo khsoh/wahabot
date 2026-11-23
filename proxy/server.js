@@ -690,7 +690,12 @@ async function registerWahaWebhook() {
       webhooks: [
         {
           url: botConfig.PROXY_WEBHOOK_URL,
-          events: ["poll.vote", "message", "session.status"],
+          events: [
+            "poll.vote",
+            "poll.vote.failed",
+            "message",
+            "session.status",
+          ],
           hmac: {
             key: botConfig.WAHA_HMAC_SECRET,
           },

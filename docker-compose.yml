@@ -18,6 +18,9 @@ services:
       - WAHA_CLIENT_BROWSER_NAME=Desktop
       - WHATSAPP_SWAGGER_ENABLED=false
       - WHATSAPP_RESTART_ALL_SESSIONS=true
+      - WHATSAPP_HOOK_RETRIES_POLICY=linear
+      - WHATSAPP_HOOK_RETRIES_DELAY_SECONDS=3
+      - WHATSAPP_HOOK_RETRIES_ATTEMPTS=20
       - WAHA_HTTPS_ENABLED=true
       - WAHA_HTTPS_PATH_CERT=/app/certs/fullchain.pem
       - WAHA_HTTPS_PATH_KEY=/app/certs/privkey.pem
