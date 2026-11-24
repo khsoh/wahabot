@@ -149,7 +149,10 @@ localcfg/
 
 # NPM outdated file in this folder
 data/
+
+# Proxy server related folders to be excluded
 shared-tmp/
+polldb/
 
 # waha-gows sessions file
 sessions/

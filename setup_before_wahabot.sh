@@ -16,7 +16,9 @@ if [[ ! $(git remote -v) ]]; then
     popd >/dev/null || exit
     return 1
 fi
-mkdir shared-tmp
+mkdir -p data
+mkdir -p polldb
+mkdir -p shared-tmp
 chmod 755 shared-tmp
 
 # Install nodejs packages
