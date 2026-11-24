@@ -424,6 +424,9 @@ const serverOptions = {
   cert: fs.readFileSync(certPath),
 };
 const gasServer = https.createServer(serverOptions, async (req, res) => {
+  const url = new URL(req.url, `https://${req.headers.host || "localhost"}`);
+  const pathname = url.pathname;
+
   let resTimeout = gasServer.timeout;
   let connectStartTime = Date.now();
   let changeTimeout = connectStartTime + resTimeout - 10000;
@@ -451,15 +454,17 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
     req.on("end", async function () {
       try {
         dtcon.log("Processing end of gasServer packet");
+        res.statusCode = 200;
+
         // Check header has API key
         const XapiKey = req.headers?.["x-api-key"];
         if (XapiKey !== secretApiKey) {
-          throw new Error("Error: Incorrect API key");
+          res.statusCode = 401; // Unauthorized or unauthenticated access
+          throw new Error("Error: Unauthorized or missing API key");
         }
-        res.statusCode = 200;
 
         let jsonObj = JSON.parse(body);
-        if (jsonObj.cmd === "sendSignalMessage") {
+        if (pathname === "/signal/sendmessage") {
           dtcon.log(`Received sendSignalMessage: ${jsonObj.message}`);
           if ((jsonObj?.qr ?? null) && qrTimers.size > 0) {
             await fire_authqrTimers();
@@ -476,7 +481,7 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
             qrTimers.add(timerObj);
           }
           res.setHeader("Content-Type", "application/json");
-        } else if (jsonObj.cmd === "removeSignalMessage") {
+        } else if (pathname === "/signal/removemessage") {
           dtcon.log(`Received removeSignalMessage: ${jsonObj.timestamp}`);
           let retObj = await removeSignalMessage(
             signalConfig.GROUPID,
@@ -488,12 +493,18 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
       } catch (e) {
         response =
           "ERROR CAUGHT: " +
-          `${e?.stack ?? "no stack"}\n${e?.cause ?? "no cause"}`;
+          `${e?.stack ?? "no stack"}\n${e?.cause ?? "no cause"}\n${e?.message ?? "no message"}`;
         dtcon.error(response);
 
-        res.statusCode = 400;
+        if (res.statusCode === 200) {
+          // Assign 500 error code if it is now yet assigned - internal server error
+          res.statusCode = 500;
+          res.end(response);
+        }
       } finally {
-        res.end(response);
+        if (!res.headersSent) {
+          res.end(response);
+        }
       }
     });
   } else {
@@ -535,6 +546,18 @@ const server = http.createServer((req, res) => {
         },
         rawBody: rawBody,
       };
+
+      // Validate signature
+      const signature = crypto
+        .createHmac("sha512", botConfig.WAHA_HMAC_SECRET)
+        .update(rawBody)
+        .digest("hex");
+      if (signature !== incomingHmac) {
+        res.statusCode = 401; // Unauthorized or unauthenticated access
+        throw new Error(
+          `Invalid HMAC signature:\nReceived signature ${incomingHmac}\nComputed signature ${signature}`,
+        );
+      }
 
       let wahaObj = JSON.parse(rawBody) || {};
       let delayedPromise = null;
@@ -593,6 +616,14 @@ const server = http.createServer((req, res) => {
             `=== Old session.status packet ignored.  Current timestamp: ${wahasession.timestamp}`,
           );
         }
+      } else if (wahaObj?.event === "poll.vote") {
+        // Only records if pollId is currently watched & not expired
+        const saved = pollStore.recordVoteEvent(wahaObj.payload);
+        dtcon.log(
+          saved
+            ? `[Vote Recorded] Poll: ${wahaObj.payload?.poll?.id} | Voter: ${wahaObj.payload?.vote?.from}`
+            : `[Vote Ignored - Unwatched/Expired] Poll: ${wahaObj.payload?.poll?.id}`,
+        );
       }
 
       const gasResponse = await fetch(botConfig.GASURL, {
@@ -679,7 +710,10 @@ const server = http.createServer((req, res) => {
     } catch (err) {
       dtcon.error("Proxy error:", err.message);
       if (!res.headersSent) {
-        res.writeHead(500);
+        if (res.statusCode === 200) {
+          // No error code assigned, so just say this is internal server error
+          res.writeHead(500);
+        }
         res.end("Internal Server Error");
       }
     }
