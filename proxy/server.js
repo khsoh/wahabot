@@ -9,6 +9,8 @@ const util = require("node:util");
 const parseEnv = util.parseEnv;
 const { stdout, stderr } = require("process");
 
+const pollStore = require("./pollStore");
+
 const CONTAINER_TMP_DIR = "/shared-tmp";
 const HOST_TMP_DIR = process.env.HOST_SHARED_TMP;
 
