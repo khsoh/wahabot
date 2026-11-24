@@ -436,15 +436,47 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
   let connectStartTime = Date.now();
   let changeTimeout = connectStartTime + resTimeout - 10000;
   let method = req.method.toUpperCase();
+  let goodResult = {
+    success: true,
+  };
+  let failResult = {
+    success: false,
+  };
 
   if (method === "GET") {
-    res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end("ok");
+    // Check header has API key
+    const XapiKey = req.headers?.["x-api-key"];
+    if (XapiKey !== secretApiKey) {
+      let errmsg = "Error: Unauthorized or missing API key";
+      return sendJson(res, 401, { ...failResult, error: errmsg });
+    }
+
+    if (pathname === "/polls") {
+      return sendJson(res, 200, {
+        ...goodResult,
+        polls: pollStore.getWatchedPolls(),
+      });
+    }
+
+    // Fetch stored values for a specific poll
+    const voteMatch = pathname.match(/^\/polls\/([^/]+)\/votes$/);
+    if (voteMatch) {
+      const pollId = decodeURIComponent(voteMatch[1]);
+      const votes = pollStore.getPollVotes(pollId);
+      return sendJson(res, 200, {
+        ...goodResult,
+        pollId,
+        count: votes.length,
+        votes,
+      });
+    }
+
+    return sendJson(res, 404, {
+      ...failResult,
+      error: `GET ${pathname} resource not found`,
+    });
   } else if (method === "POST") {
     let body = "";
-    let response = "OK";
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "text/plain");
 
     req.on("data", function (chunk) {
       body += chunk;
@@ -465,7 +497,7 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
         const XapiKey = req.headers?.["x-api-key"];
         if (XapiKey !== secretApiKey) {
           let errmsg = "Error: Unauthorized or missing API key";
-          sendJson(res, 401, { error: errmsg });
+          sendJson(res, 401, { ...failResult, error: errmsg });
           throw new Error(errmsg);
         }
 
@@ -482,44 +514,73 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
               jsonObj?.qr ?? null,
               jsonObj?.autoDeletems ?? 0,
             )) || {};
-          response = JSON.stringify(responseData || {});
           if (timerObj) {
             qrTimers.add(timerObj);
           }
-          sendJson(res, 200, responseData);
+          return sendJson(res, 200, responseData);
         } else if (pathname === "/signal/removemessage") {
           dtcon.log(`Received removeSignalMessage: ${jsonObj.timestamp}`);
           let retObj = await removeSignalMessage(
             signalConfig.GROUPID,
             jsonObj.timestamp,
           );
-          response = JSON.stringify(retObj);
-          sendJson(res, 200, retObj);
+          return sendJson(res, 200, retObj);
         } else if (pathname === "/polls/watch") {
           // Register a poll to watch
           if (!jsonObj.pollId) {
+            return sendJson(res, 400, {
+              ...failResult,
+              error: "pollId field is missing from payload",
+            });
           }
 
-          res.setHeader("Content-Type", "application/json");
+          const result = pollStore.watchPoll(
+            jsonObj.pollId,
+            jsonObj.ttlHours || 72,
+          );
+          return sendJson(res, 200, { ...goodResult, ...result });
         }
+
+        return sendJson(res, 404, {
+          ...failResult,
+          error: `POST ${pathname} resource not found`,
+        });
       } catch (e) {
-        response =
+        let errmsg =
           "ERROR CAUGHT: " +
           `${e?.stack ?? "no stack"}\n${e?.cause ?? "no cause"}\n${e?.message ?? "no message"}`;
-        dtcon.error(response);
+        dtcon.error(errmsg);
 
-        if (res.statusCode === 200) {
-          // Assign 500 error code if it is now yet assigned - internal server error
-          res.statusCode = 500;
+        if (!res.headersSent) {
+          if (res.statusCode === 200) {
+            // Assign 500 error code if it is now yet assigned - internal server error
+            res.statusCode = 500;
+          }
+          sendJson(res, res.statusCode, { ...failResult, error: errmsg });
         }
       } finally {
         if (!res.headersSent) {
-          res.end(response);
+          sendJson(res, res.statusCode, goodResult);
         }
       }
     });
+  } else if (method === "DELETE") {
+    // Delete a specific poll and all its votes immediately
+    const deleteMatch = pathname.match(/^\/polls\/([^/]+)$/);
+    if (deleteMatch) {
+      const pollId = decodeURIComponent(deleteMatch[1]);
+      const result = pollStore.deletePoll(pollId);
+      return sendJson(res, 200, result);
+    }
+
+    return sendJson(res, 404, {
+      ...failResult,
+      error: `DELETE ${pathname} resource not found`,
+    });
   } else {
-    dtcon.error(`HTTP Server warning: Unhandled method ${method}`);
+    let errmsg = `HTTP Server warning: Unhandled method ${method}`;
+    dtcon.error(errmsg);
+    sendJson(res, 501, { ...failResult, error: errmsg });
   }
 });
 

@@ -70,8 +70,21 @@ const getVotesStmt = db.prepare(`
   WHERE poll_id = ?
 `);
 
-const cleanupStmt = db.prepare(`
+const cleanupWatchedStmt = db.prepare(`
   DELETE FROM watched_polls WHERE expires_at <= ?
+`);
+
+const cleanupOrphanVotesStmt = db.prepare(`
+  DELETE FROM poll_votes
+  WHERE poll_id NOT IN (SELECT poll_id FROM watched_polls)
+`);
+
+const deletePollStmt = db.prepare(`
+  DELETE FROM watched_polls WHERE poll_id = ?
+`);
+
+const deletePollVotesStmt = db.prepare(`
+  DELETE FROM poll_votes WHERE poll_id = ?
 `);
 
 function watchPoll(pollId, ttlHours = 72) {
@@ -123,9 +136,30 @@ function getPollVotes(pollId) {
 }
 
 function cleanupExpiredPolls() {
-  const info = cleanupStmt.run(Date.now());
-  if (info.changes > 0) db.exec("PRAGMA optimize;");
-  return info.changes;
+  const watchedInfo = cleanupWatchedStmt.run(Date.now());
+  const votesInfo = cleanupOrphanVotesStmt.run();
+
+  if (watchedInfo.changes > 0 || votesInfo.changes > 0) {
+    db.exec("PRAGMA optimize;");
+  }
+  return {
+    pollsRemoved: watchedInfo.changes,
+    orphanVotesRemoved: votesInfo.changes,
+  };
+}
+
+/**
+ * Immediately delete a specific poll and all of its stored votes.
+ */
+function deletePoll(pollId) {
+  const votesInfo = deletePollVotesStmt.run(pollId);
+  const pollInfo = deletePollStmt.run(pollId);
+
+  return {
+    pollId,
+    deleted: pollInfo.changes > 0,
+    votesRemoved: votesInfo.changes,
+  };
 }
 
 setInterval(cleanupExpiredPolls, 60 * 60 * 1000).unref();
@@ -136,5 +170,6 @@ module.exports = {
   getWatchedPolls,
   recordVoteEvent,
   getPollVotes,
+  deletePoll,
   cleanupExpiredPolls,
 };
