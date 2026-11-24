@@ -316,6 +316,11 @@ function loadConfig() {
   return { botConfig, signalConfig };
 }
 
+function sendJson(res, statusCode, data) {
+  res.writeHead(statusCode, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(data));
+}
+
 function sendToWaha(path, method, payloadObj, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const body = payloadObj ? JSON.stringify(payloadObj) : "";
@@ -459,8 +464,9 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
         // Check header has API key
         const XapiKey = req.headers?.["x-api-key"];
         if (XapiKey !== secretApiKey) {
-          res.statusCode = 401; // Unauthorized or unauthenticated access
-          throw new Error("Error: Unauthorized or missing API key");
+          let errmsg = "Error: Unauthorized or missing API key";
+          sendJson(res, 401, { error: errmsg });
+          throw new Error(errmsg);
         }
 
         let jsonObj = JSON.parse(body);
@@ -480,7 +486,7 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
           if (timerObj) {
             qrTimers.add(timerObj);
           }
-          res.setHeader("Content-Type", "application/json");
+          sendJson(res, 200, responseData);
         } else if (pathname === "/signal/removemessage") {
           dtcon.log(`Received removeSignalMessage: ${jsonObj.timestamp}`);
           let retObj = await removeSignalMessage(
@@ -488,6 +494,12 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
             jsonObj.timestamp,
           );
           response = JSON.stringify(retObj);
+          sendJson(res, 200, retObj);
+        } else if (pathname === "/polls/watch") {
+          // Register a poll to watch
+          if (!jsonObj.pollId) {
+          }
+
           res.setHeader("Content-Type", "application/json");
         }
       } catch (e) {
@@ -499,7 +511,6 @@ const gasServer = https.createServer(serverOptions, async (req, res) => {
         if (res.statusCode === 200) {
           // Assign 500 error code if it is now yet assigned - internal server error
           res.statusCode = 500;
-          res.end(response);
         }
       } finally {
         if (!res.headersSent) {
