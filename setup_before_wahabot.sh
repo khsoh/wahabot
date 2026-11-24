@@ -21,6 +21,10 @@ mkdir -p polldb
 mkdir -p shared-tmp
 chmod 755 shared-tmp
 
+# The following is required because docker user node is UID 1000 and needs to write to shared-tmp and polldb
+sudo chown -R 1000:1000 ./shared-tmp
+sudo chown -R 1000:1000 ./polldb
+
 # Install nodejs packages
 cd proxy
 npm install

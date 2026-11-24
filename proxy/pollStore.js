@@ -1,15 +1,15 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const Database = require("better-sqlite3");
+const { DatabaseSync } = require("node:sqlite");
 
 const DB_DIR = "/app/polldb";
 if (!fs.existsSync(DB_DIR)) {
   fs.mkdirSync(DB_DIR, { recursive: true });
 }
 
-const db = new Database(path.join(DB_DIR, "polls.db"));
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+const db = new DatabaseSync(path.join(DB_DIR, "polls.db"));
+db.exec("PRAGMA journal_mode = WAL;");
+db.exec("PRAGMA foreign_keys = ON;");
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS watched_polls (
@@ -74,9 +74,6 @@ const cleanupStmt = db.prepare(`
   DELETE FROM watched_polls WHERE expires_at <= ?
 `);
 
-/**
- * Register or extend the expiration of a poll to track.
- */
 function watchPoll(pollId, ttlHours = 72) {
   const now = Date.now();
   const expiresAt = now + Number(ttlHours) * 60 * 60 * 1000;
@@ -89,9 +86,6 @@ function watchPoll(pollId, ttlHours = 72) {
   };
 }
 
-/**
- * Return all currently active (non-expired) watched polls and their vote counts.
- */
 function getWatchedPolls() {
   const now = Date.now();
   return listWatchedStmt.all(now).map((row) => ({
@@ -102,9 +96,6 @@ function getWatchedPolls() {
   }));
 }
 
-/**
- * Record or update a voter's selection if the poll is watched and not expired.
- */
 function recordVoteEvent(payload) {
   if (!payload || !payload.poll || !payload.vote) return false;
 
@@ -123,9 +114,6 @@ function recordVoteEvent(payload) {
   return true;
 }
 
-/**
- * Return all stored votes for a given pollId.
- */
 function getPollVotes(pollId) {
   return getVotesStmt.all(pollId).map((row) => ({
     voter: row.voter_id,
@@ -134,16 +122,12 @@ function getPollVotes(pollId) {
   }));
 }
 
-/**
- * Delete expired polls (and cascade-delete their votes).
- */
 function cleanupExpiredPolls() {
   const info = cleanupStmt.run(Date.now());
-  if (info.changes > 0) db.pragma("optimize");
+  if (info.changes > 0) db.exec("PRAGMA optimize;");
   return info.changes;
 }
 
-// Run cleanup hourly + once on startup (.unref() lets container exit cleanly on SIGTERM)
 setInterval(cleanupExpiredPolls, 60 * 60 * 1000).unref();
 cleanupExpiredPolls();
 

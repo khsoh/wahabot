@@ -11,7 +11,6 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@cacheable/node-cache": "^3.1.1",
-    "qrcode": "^1.5.4",
-    "better-sqlite3": "^13.2.0"
+    "qrcode": "^1.5.4"
   }
 }
