@@ -803,6 +803,7 @@ async function registerWahaWebhook() {
             "poll.vote.failed",
             "message",
             "session.status",
+            "group.v2.participants",
           ],
           hmac: {
             key: botConfig.WAHA_HMAC_SECRET,
